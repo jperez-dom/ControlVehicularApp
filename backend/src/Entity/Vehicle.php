@@ -6,6 +6,7 @@ use App\Repository\VehicleRepository;
 use Doctrine\ORM\Mapping as ORM;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Symphony\Component\Serializer\Annotacion\Groups;
 
 #[ORM\Entity(repositoryClass: VehicleRepository::class)]
 #[ORM\Table(name: "vehicle")]
@@ -13,7 +14,7 @@ class Vehicle
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
-    #[ORM\Column(type: "integer", unsigned: true)]
+    #[ORM\Column(type: "integer",)]
     private ?int $id = null;
 
     #[ORM\Column(length: 50)]
@@ -69,4 +70,31 @@ class Vehicle
     public function getColor(): ?string { return $this->color; }
     public function setColor(string $color): static { $this->color = $color; return $this; }
 
-    public function getInternalNumber(): ?int { return
+    public function getInternalNumber(): ?int { return $this->internal_number; }
+    public function setInternalNumber(?int $internal_number): static { $this->internal_number = $internal_number; return $this; }
+
+    public function getStatus(): ?string { return $this->status; }
+    public function setStatus(string $status): static { $this->status = $status; return $this; }
+
+    public function getCreatedAt(): ?\DateTimeInterface { return $this->created_at; }
+    public function setCreatedAt(\DateTimeInterface $created_at): static { $this->created_at = $created_at; return $this; }
+
+    public function getUpdatedAt(): ?\DateTimeInterface { return $this->updated_at; }
+    public function setUpdatedAt(?\DateTimeInterface $updated_at): static { $this->updated_at = $updated_at; return $this; }
+
+    /** @return Collection<int, Comission> */
+    public function getComissions(): Collection { return $this->comissions; }
+    public function addComission(Comission $comission): static {
+        if (!$this->comissions->contains($comission)) {
+            $this->comissions->add($comission);
+            $comission->setVehicle($this);
+        }
+        return $this;
+    }
+    public function removeComission(Comission $comission): static {
+        if ($this->comissions->removeElement($comission) && $comission->getVehicle() === $this) {
+            $comission->setVehicle(null);
+        }
+        return $this;
+    }
+}
