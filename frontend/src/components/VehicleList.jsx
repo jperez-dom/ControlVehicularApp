@@ -12,6 +12,7 @@ export default function VehicleList() {
                 const data = await getVehicles();
                 setVehicles(data);
             } catch (err) {
+                console.log("Error al obetener vehiculos", err);
                 setError(err.message);
             } finally {
                 setLoading(false);
