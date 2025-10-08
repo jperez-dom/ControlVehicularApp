@@ -6,14 +6,16 @@ use App\Repository\UsersRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\DBAL\Types\Types;
 
 #[ORM\Entity(repositoryClass: UsersRepository::class)]
 #[ORM\Table(name: "users")]
+#[ORM\HasLifecycleCallbacks]
 class Users
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
-    #[ORM\Column(type: "integer", unsigned: true)]
+    #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
     #[ORM\Column(length: 50)]
@@ -25,14 +27,14 @@ class Users
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $email = null;
 
-    #[ORM\Column(type: "string", length: 1, options: ["default" => "1"])]
+    #[ORM\Column(type: Types::STRING, length: 1, options: ["default" => "1"])]
     private ?string $status = '1';
 
-    #[ORM\Column(name: "created_at", type: "datetime", options: ["default" => "CURRENT_TIMESTAMP"])]
-    private ?\DateTimeInterface $createdAt = null;
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true, options: ["default" => "CURRENT_TIMESTAMP"])]
+    private ?\DateTimeInterface $created_at = null;
 
-    #[ORM\Column(name: "updated_at", type: "datetime", nullable: true, options: ["default" => "CURRENT_TIMESTAMP", "on update" => "CURRENT_TIMESTAMP"])]
-    private ?\DateTimeInterface $updatedAt = null;
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true, options: ["default" => "CURRENT_TIMESTAMP", "on update" => "CURRENT_TIMESTAMP"])]
+    private ?\DateTimeInterface $updated_at = null;
 
     #[ORM\OneToMany(mappedBy: "user", targetEntity: Comission::class)]
     private Collection $comissions;
@@ -40,93 +42,47 @@ class Users
     public function __construct()
     {
         $this->comissions = new ArrayCollection();
+        $this->status = '1';
+        $this->created_at = new \DateTimeImmutable();
+        $this->updated_at = new \DateTimeImmutable();
     }
 
-    // 🔹 ID
-    public function getId(): ?int
+    #[ORM\PrePersist]
+    public function onPrePersist(): void
     {
-        return $this->id;
+        if ($this->created_at === null) {
+            $this->created_at = new \DateTimeImmutable();
+        }
+        $this->updated_at = new \DateTimeImmutable();
     }
 
-    // 🔹 User
-    public function getUser(): ?string
+    #[ORM\PreUpdate]
+    public function onPreUpdate(): void
     {
-        return $this->user;
+        $this->updated_at = new \DateTimeImmutable();
     }
 
-    public function setUser(string $user): static
-    {
-        $this->user = $user;
-        return $this;
-    }
+    public function getId(): ?int { return $this->id; }
 
-    // 🔹 Password
-    public function getPassword(): ?string
-    {
-        return $this->password;
-    }
+    public function getUser(): ?string { return $this->user; }
+    public function setUser(string $user): static { $this->user = $user; return $this; }
 
-    public function setPassword(string $password): static
-    {
-        $this->password = $password;
-        return $this;
-    }
+    public function getPassword(): ?string { return $this->password; }
+    public function setPassword(string $password): static { $this->password = $password; return $this; }
 
-    // 🔹 Email
-    public function getEmail(): ?string
-    {
-        return $this->email;
-    }
+    public function getEmail(): ?string { return $this->email; }
+    public function setEmail(?string $email): static { $this->email = $email; return $this; }
 
-    public function setEmail(?string $email): static
-    {
-        $this->email = $email;
-        return $this;
-    }
+    public function getStatus(): ?string { return $this->status; }
+    public function setStatus(string $status): static { $this->status = $status; return $this; }
 
-    // 🔹 Status
-    public function getStatus(): ?string
-    {
-        return $this->status;
-    }
+    public function getCreatedAt(): ?\DateTimeInterface { return $this->created_at; }
+    public function setCreatedAt(?\DateTimeInterface $created_at): static { $this->created_at = $created_at; return $this; }
 
-    public function setStatus(string $status): static
-    {
-        $this->status = $status;
-        return $this;
-    }
+    public function getUpdatedAt(): ?\DateTimeInterface { return $this->updated_at; }
+    public function setUpdatedAt(?\DateTimeInterface $updated_at): static { $this->updated_at = $updated_at; return $this; }
 
-    // 🔹 CreatedAt
-    public function getCreatedAt(): ?\DateTimeInterface
-    {
-        return $this->createdAt;
-    }
-
-    public function setCreatedAt(\DateTimeInterface $createdAt): static
-    {
-        $this->createdAt = $createdAt;
-        return $this;
-    }
-
-    // 🔹 UpdatedAt
-    public function getUpdatedAt(): ?\DateTimeInterface
-    {
-        return $this->updatedAt;
-    }
-
-    public function setUpdatedAt(?\DateTimeInterface $updatedAt): static
-    {
-        $this->updatedAt = $updatedAt;
-        return $this;
-    }
-
-    /**
-     * @return Collection<int, Comission>
-     */
-    public function getComissions(): Collection
-    {
-        return $this->comissions;
-    }
+    public function getComissions(): Collection { return $this->comissions; }
 
     public function addComission(Comission $comission): static
     {
@@ -134,18 +90,14 @@ class Users
             $this->comissions->add($comission);
             $comission->setUser($this);
         }
-
         return $this;
     }
 
     public function removeComission(Comission $comission): static
     {
-        if ($this->comissions->removeElement($comission)) {
-            if ($comission->getUser() === $this) {
-                $comission->setUser(null);
-            }
+        if ($this->comissions->removeElement($comission) && $comission->getUser() === $this) {
+            $comission->setUser(null);
         }
-
         return $this;
     }
 }

@@ -1,9 +1,26 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
-export default function VehicleEdit({ vehicle, onUpdate, onDelete }) {
-    const [form, setForm] = useState({ ...vehicle });
+export default function VehicleEdit({ vehicle, onUpdate }) {
+    const [form, setForm] = useState({
+        id: "",
+        plate: "",
+        brand: "",
+        model: "",
+        year: "",
+        color: "",
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    useEffect(() => {
+        if (vehicle) {
+            setForm({ ...vehicle });
+        }
+    }, [vehicle]);
+
+    if (!vehicle) {
+        return <p style={{ color: "gray" }}>Selecciona un vehículo para editar...</p>;
+    }
 
     const handleChange = (e) => {
         setForm({ ...form, [e.target.name]: e.target.value });
@@ -15,21 +32,6 @@ export default function VehicleEdit({ vehicle, onUpdate, onDelete }) {
         setError(null);
         try {
             await onUpdate(form.id, form);
-            alert("Vehículo actualizado correctamente");
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDelete = async () => {
-        if (!window.confirm("¿Seguro que deseas eliminar este vehículo?")) return;
-        setLoading(true);
-        setError(null);
-        try {
-            await onDelete(form.id);
-            alert("Vehículo eliminado correctamente");
         } catch (err) {
             setError(err.message);
         } finally {
@@ -38,20 +40,56 @@ export default function VehicleEdit({ vehicle, onUpdate, onDelete }) {
     };
 
     return (
-        <form onSubmit={handleUpdate} style={{ marginBottom: "20px", border: "1px solid #ccc", padding: "10px" }}>
-            <h3>✏️ Editar vehículo</h3>
-            <input name="plate" placeholder="Placa" value={form.plate} onChange={handleChange} required />
-            <input name="brand" placeholder="Marca" value={form.brand} onChange={handleChange} required />
-            <input name="model" placeholder="Modelo" value={form.model} onChange={handleChange} required />
-            <input name="year" placeholder="Año" value={form.year} onChange={handleChange} required />
-            <input name="color" placeholder="Color" value={form.color} onChange={handleChange} required />
-            <input name="internalNumber" placeholder="Número interno" value={form.internalNumber} onChange={handleChange} required />
-            <button type="submit" disabled={loading}>
-                {loading ? "Actualizando..." : "Guardar cambios"}
-            </button>
-            <button type="button" onClick={handleDelete} disabled={loading} style={{ marginLeft: "10px", color: "red" }}>
-                Eliminar
-            </button>
+        <form
+            onSubmit={handleUpdate}
+            style={{
+                marginTop: "10px",
+                background: "#fafafa",
+                padding: "10px",
+                borderRadius: "8px",
+            }}
+        >
+            <h4>✏️ Editar vehículo #{form.id}</h4>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <input
+                    name="plate"
+                    placeholder="Placa"
+                    value={form.plate}
+                    onChange={handleChange}
+                    required
+                />
+                <input
+                    name="brand"
+                    placeholder="Marca"
+                    value={form.brand}
+                    onChange={handleChange}
+                    required
+                />
+                <input
+                    name="model"
+                    placeholder="Modelo"
+                    value={form.model}
+                    onChange={handleChange}
+                    required
+                />
+                <input
+                    name="year"
+                    placeholder="Año"
+                    value={form.year}
+                    onChange={handleChange}
+                    required
+                />
+                <input
+                    name="color"
+                    placeholder="Color"
+                    value={form.color}
+                    onChange={handleChange}
+                    required
+                />
+                <button type="submit" disabled={loading}>
+                    {loading ? "Guardando..." : "💾 Guardar"}
+                </button>
+            </div>
             {error && <p style={{ color: "red" }}>Error: {error}</p>}
         </form>
     );

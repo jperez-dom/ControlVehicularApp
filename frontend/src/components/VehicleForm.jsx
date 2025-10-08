@@ -41,6 +41,7 @@ export default function VehicleForm({ onVehicleAdded }) {
     };
 
     return (
+        <div style={{ padding: "20px" }}>
         <form onSubmit={handleSubmit} style={{ marginBottom: "20px" }}>
             <h3>📝 Registrar nuevo vehículo</h3>
             <input name="plate" placeholder="Placa" value={vehicle.plate} onChange={handleChange} required />
@@ -52,7 +53,8 @@ export default function VehicleForm({ onVehicleAdded }) {
             <button type="submit" disabled={loading}>
                 {loading ? "Agregando..." : "Guardar"}
             </button>
-            {error && <p style={{ color: "red" }}>Error: {error}</p>}
+            {error && <p style={{ color: "red" }}>{error}</p>}
         </form>
+        </div>
     );
 }
