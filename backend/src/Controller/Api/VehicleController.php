@@ -18,7 +18,7 @@ final class VehicleController extends AbstractController
     {
         $data = json_decode($request->getContent(), true);
         if (!$data) {
-            return $this->json(['error' => 'No data found.'], 400);
+            return $this->json(['error' => 'Datos inválidos'], 400);
         }
         $vehicle = new \App\Entity\Vehicle();
         $vehicle->setPlate($data['plate']??'');
