@@ -4,6 +4,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { X } from 'lucide-react';
+import { vehiclesAPI } from '../api';
+import { toast } from "sonner";
 
 interface Vehicle {
   value: string;
@@ -12,6 +14,7 @@ interface Vehicle {
   modelo?: string;
   color?: string;
   año?: string;
+  id?: number;
 }
 
 interface AddVehicleModalProps {
@@ -27,37 +30,61 @@ export function AddVehicleModal({ open, onOpenChange, onVehicleAdded }: AddVehic
     color: '',
     año: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.marca.trim() || !formData.modelo.trim()) {
       return;
     }
 
-    const vehicleName = `${formData.marca} ${formData.modelo}`.trim();
-    const vehicleValue = vehicleName.toLowerCase().replace(/\s+/g, '-');
-    
-    const newVehicle: Vehicle = {
-      value: vehicleValue,
-      label: vehicleName,
-      marca: formData.marca,
-      modelo: formData.modelo,
-      color: formData.color,
-      año: formData.año
-    };
+    setIsLoading(true);
 
-    onVehicleAdded(newVehicle);
-    
-    // Reset form
-    setFormData({
-      marca: '',
-      modelo: '',
-      color: '',
-      año: ''
-    });
-    
-    onOpenChange(false);
+    try {
+      const vehicleName = `${formData.marca} ${formData.modelo}`.trim();
+
+      // Guardar en la BD
+      const response = await vehiclesAPI.create({
+        brand: formData.marca,
+        model: formData.modelo,
+        plate: '',
+        year: formData.año ? parseInt(formData.año) : undefined,
+        color: formData.color || ''
+      });
+
+      if (response.data.success) {
+        const vehicleValue = vehicleName.toLowerCase().replace(/\s+/g, '-');
+
+        const newVehicle: Vehicle = {
+          id: response.data.vehicle.id,
+          value: vehicleValue,
+          label: vehicleName,
+          marca: formData.marca,
+          modelo: formData.modelo,
+          color: formData.color,
+          año: formData.año
+        };
+
+        onVehicleAdded(newVehicle);
+        toast.success('Vehículo guardado en la base de datos');
+
+        // Reset form
+        setFormData({
+          marca: '',
+          modelo: '',
+          color: '',
+          año: ''
+        });
+
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error('Error al crear vehículo:', error);
+      toast.error('Error al guardar el vehículo');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -144,15 +171,16 @@ export function AddVehicleModal({ open, onOpenChange, onVehicleAdded }: AddVehic
               variant="outline"
               onClick={handleCancel}
               className="flex-1"
+              disabled={isLoading}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={!isFormValid}
+              disabled={!isFormValid || isLoading}
               className="flex-1"
             >
-              Guardar
+              {isLoading ? 'Guardando...' : 'Guardar'}
             </Button>
           </div>
           </form>

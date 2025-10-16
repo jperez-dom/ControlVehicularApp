@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { VisuallyHidden } from './ui/visually-hidden';
 import { Button } from './ui/button';
 import { Camera, RotateCcw, Check, X } from 'lucide-react';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface PhotoCaptureModalProps {
   open: boolean;

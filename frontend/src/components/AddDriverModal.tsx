@@ -4,11 +4,14 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { X } from 'lucide-react';
+import { driversAPI } from '../api';
+import { toast } from "sonner";
 
 interface Driver {
   value: string;
   label: string;
   cargo?: string;
+  id?: number;
 }
 
 interface AddDriverModalProps {
@@ -24,33 +27,56 @@ export function AddDriverModal({ id, open, onOpenChange, onDriverAdded }: AddDri
     apellidos: '',
     cargo: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.nombre.trim() || !formData.apellidos.trim()) {
       return;
     }
 
-    const fullName = `${formData.nombre} ${formData.apellidos}`.trim();
-    const driverValue = fullName.toLowerCase().replace(/\s+/g, '-');
-    
-    const newDriver: Driver = {
-      value: driverValue,
-      label: fullName,
-      cargo: formData.cargo
-    };
+    setIsLoading(true);
 
-    onDriverAdded(newDriver);
-    
-    // Reset form
-    setFormData({
-      nombre: '',
-      apellidos: '',
-      cargo: ''
-    });
-    
-    onOpenChange(false);
+    try {
+      const fullName = `${formData.nombre} ${formData.apellidos}`.trim();
+
+      // Guardar en la BD
+      const response = await driversAPI.create({
+        name: fullName,
+        position: formData.cargo || 'Sin cargo',
+        phone: '',
+        email: ''
+      });
+
+      if (response.data.success) {
+        const driverValue = fullName.toLowerCase().replace(/\s+/g, '-');
+
+        const newDriver: Driver = {
+          id: response.data.driver.id,
+          value: driverValue,
+          label: fullName,
+          cargo: formData.cargo
+        };
+
+        onDriverAdded(newDriver);
+        toast.success('Conductor guardado en la base de datos');
+
+        // Reset form
+        setFormData({
+          nombre: '',
+          apellidos: '',
+          cargo: ''
+        });
+
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error('Error al crear conductor:', error);
+      toast.error('Error al guardar el conductor');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -118,15 +144,16 @@ export function AddDriverModal({ id, open, onOpenChange, onDriverAdded }: AddDri
               variant="outline"
               onClick={handleCancel}
               className="flex-1"
+              disabled={isLoading}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={!isFormValid}
+              disabled={!isFormValid || isLoading}
               className="flex-1"
             >
-              Guardar
+              {isLoading ? 'Guardando...' : 'Guardar'}
             </Button>
           </div>
           </form>

@@ -25,6 +25,15 @@ class Inspection
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment = null;
 
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $photo_url = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $signature_conductor = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $signature_approver = null;
+
     #[ORM\Column(type: Types::STRING, length: 1, options: ["default" => "1"])]
     private ?string $status = '1';
 
@@ -75,4 +84,10 @@ class Inspection
     public function setUpdatedAt(?\DateTimeInterface $updated_at): static { $this->updated_at = $updated_at; return $this; }
     public function getPass(): ?Pass { return $this->pass; }
     public function setPass(?Pass $pass): static { $this->pass = $pass; return $this; }
+    public function getPhotoUrl(): ?string { return $this->photo_url; }
+    public function setPhotoUrl(?string $photo_url): static { $this->photo_url = $photo_url; return $this; }
+    public function getSignatureConductor(): ?string { return $this->signature_conductor; }
+    public function setSignatureConductor(?string $signature_conductor): static { $this->signature_conductor = $signature_conductor; return $this; }
+    public function getSignatureApprover(): ?string { return $this->signature_approver; }
+    public function setSignatureApprover(?string $signature_approver): static { $this->signature_approver = $signature_approver; return $this; }
 }

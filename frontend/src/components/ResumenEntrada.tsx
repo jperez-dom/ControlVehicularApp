@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { motion } from 'motion/react';
 import { ArrowLeft, Send, User, Car, MapPin, Clock, Gauge, Camera, FileText } from 'lucide-react';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
 
 interface Destino {

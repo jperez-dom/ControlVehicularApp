@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Check, FileText, Send, Upload } from 'lucide-react';
 import { motion } from 'motion/react';
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';

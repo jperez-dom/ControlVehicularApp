@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { motion } from 'motion/react';
+import api from "../api";
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
 
 interface LoginProps {
@@ -57,23 +58,32 @@ export function Login({ onLogin }: LoginProps) {
     return otpCode.every(digit => digit !== '');
   };
 
-  const handleSubmit = () => {
-    if (!isFormValid()) return;
+    const handleSubmit = async () => {
+        if (!isFormValid()) return;
 
-    const code = otpCode.join('');
-    
-    if (code === '0000') {
-      toast.success('Acceso autorizado');
-      onLogin();
-    } else {
-      setError('Código inválido');
-      // Clear the form after error
-      setTimeout(() => {
-        setOtpCode(['', '', '', '']);
-        inputRefs.current[0]?.focus();
-      }, 1000);
-    }
-  };
+        const code = otpCode.join('');
+
+        try {
+            const response = await api.post("/auth/login", { code });
+
+            if (response.data.success) {
+                toast.success("Acceso autorizado");
+                onLogin(); // continúa al dashboard
+            } else {
+                setError("Código inválido");
+            }
+        } catch (error: any) {
+            console.error("Error de login:", error);
+
+            if (error.response?.status === 401) {
+                setError("Código inválido o usuario no autorizado");
+            } else if (error.response?.status === 404) {
+                setError("El servidor no encontró la ruta de autenticación");
+            } else {
+                setError("Error al conectar con el servidor");
+            }
+        }
+    };
 
   useEffect(() => {
     // Focus first input on mount

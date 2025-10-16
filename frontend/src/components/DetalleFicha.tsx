@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { VisuallyHidden } from './ui/visually-hidden';
 import { ArrowLeft, Eye, CheckCircle, X, Mail } from 'lucide-react';
 import { PhotoGalleryViewer } from './PhotoGalleryViewer';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
 
 interface Destino {

@@ -5,7 +5,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { BottomSheetSelect } from './BottomSheet';
 import { X } from 'lucide-react';
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface Destino {
   id: string;

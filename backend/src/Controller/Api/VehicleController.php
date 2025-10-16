@@ -3,85 +3,70 @@
 namespace App\Controller\Api;
 
 use App\Entity\Vehicle;
-use App\Repository\VehicleRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Annotation\Route;
 
-#[Route('/api/vehicles', name: 'api_vehicles')]
-final class VehicleController extends AbstractController
+class VehicleController extends AbstractController
 {
-    #[Route('', name: 'create', methods: ['POST'])]
+    #[Route('/api/vehicles', name: 'api_vehicle_list', methods: ['GET'])]
+    public function list(EntityManagerInterface $em): JsonResponse
+    {
+        $vehicles = $em->getRepository(Vehicle::class)->findBy(['status' => '1']);
+
+        $data = array_map(fn($v) => [
+            'id' => $v->getId(),
+            'plate' => $v->getPlate(),
+            'model' => $v->getModel(),
+            'brand' => $v->getBrand(),
+            'year' => $v->getYear(),
+            'color' => $v->getColor(),
+            'internal_number' => $v->getInternalNumber(),
+        ], $vehicles);
+
+        return new JsonResponse($data);
+    }
+
+    #[Route('/api/vehicles', name: 'api_vehicle_create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $em): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
-        if (!$data) {
-            return $this->json(['error' => 'Datos inválidos'], 400);
+
+        if (!isset($data['brand']) || !isset($data['model'])) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'Marca y modelo son obligatorios'
+            ], 400);
         }
-        $vehicle = new \App\Entity\Vehicle();
-        $vehicle->setPlate($data['plate']??'');
-        $vehicle->setBrand($data['brand']??'');
-        $vehicle->setModel($data['model']??'');
-        $vehicle->setYear($data['year']??'');
-        $vehicle->setColor($data['color']??'');
-        $vehicle->setInternalNumber($data['internalNumber']??'');
+
+        $vehicle = new Vehicle();
+        $vehicle->setBrand($data['brand']);
+        $vehicle->setModel($data['model']);
+        $vehicle->setPlate($data['plate'] ?? '');
+        $vehicle->setYear($data['year'] ?? date('Y'));
+        $vehicle->setColor($data['color'] ?? '');
+        $vehicle->setInternalNumber($data['internal_number'] ?? null);
+        $vehicle->setStatus('1');
+        $vehicle->setCreatedAt(new \DateTimeImmutable());
+        $vehicle->setUpdatedAt(new \DateTimeImmutable());
 
         $em->persist($vehicle);
         $em->flush();
-        return $this->json($vehicle,201, [], ['groups' => 'vehicle:read']);
-    }
-    #[Route('', name: 'list', methods: ['GET'])]
-    public function list(EntityManagerInterface $em): JsonResponse
-    {
-        $vehicles = $em->getRepository(Vehicle::class)->findAll();
 
-        $data =[];
-        foreach ($vehicles as $vehicle) {
-            $data[] = [
+        return new JsonResponse([
+            'success' => true,
+            'message' => 'Vehículo creado correctamente',
+            'vehicle' => [
                 'id' => $vehicle->getId(),
                 'plate' => $vehicle->getPlate(),
                 'brand' => $vehicle->getBrand(),
                 'model' => $vehicle->getModel(),
                 'year' => $vehicle->getYear(),
                 'color' => $vehicle->getColor(),
-                'internalNumber' => $vehicle->getInternalNumber(),
-            ];
-        }
-        return $this->json($data);
-    }
-    #[Route('/{id}', name: 'update', methods: ['PUT'])]
-    public function update(int $id, Request $request, EntityManagerInterface $em): JsonResponse
-    {
-        $vehicle = $em->getRepository(Vehicle::class)->find($id);
-        if (!$vehicle) {
-            return $this->json(['error' => 'Vehiculo no encontrado.'], 404);
-        }
-        $data = json_decode($request->getContent(), true);
-        $vehicle->setPlate($data['plate'] ?? $vehicle->getPlate());
-        $vehicle->setBrand($data['brand'] ?? $vehicle->getBrand());
-        $vehicle->setModel($data['model'] ?? $vehicle->getModel());
-        $vehicle->setYear($data['year'] ?? $vehicle->getYear());
-        $vehicle->setColor($data['color'] ?? $vehicle->getColor());
-        $vehicle->setInternalNumber($data['internalNumber'] ?? $vehicle->getInternalNumber());
-
-        $em->flush();
-
-        return $this->json([
-            'message' => 'Vehiculo actualizado correctamente',
-            'vehicle' => $vehicle]);
-    }
-    #[Route('/{id}', name: 'delete', methods: ['DELETE'])]
-    public function delete(int $id, EntityManagerInterface $em): JsonResponse
-    {
-        $vehicle = $em->getRepository(Vehicle::class)->find($id);
-        if (!$vehicle) {
-            return $this->json(['error' => 'Vehiculo no encontrado'], 404);
-        }
-        $em->remove($vehicle);
-        $em->flush();
-
-        return $this->json(['message' => 'Vehiculo eliminado correctamente']);
+                'internal_number' => $vehicle->getInternalNumber(),
+            ]
+        ], 201);
     }
 }

@@ -39,6 +39,10 @@ class Users
     #[ORM\OneToMany(mappedBy: "user", targetEntity: Comission::class)]
     private Collection $comissions;
 
+    #[ORM\Column(length: 10, nullable: true)]
+    private ?string $codigo = null;
+
+
     public function __construct()
     {
         $this->comissions = new ArrayCollection();
@@ -100,4 +104,7 @@ class Users
         }
         return $this;
     }
+    public function getCodigo(): ?string { return $this->codigo; }
+    public function setCodigo(?string $codigo): static { $this->codigo = $codigo; return $this; }
 }
+
