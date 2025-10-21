@@ -24,6 +24,12 @@ class Pass
     #[ORM\Column(length: 50)]
     private ?string $fuel = null;
 
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $departureComment = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $arrivalComment = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private ?\DateTimeInterface $start_date = null;
 
@@ -74,6 +80,10 @@ class Pass
     public function setMileage(int $mileage): static { $this->mileage = $mileage; return $this; }
     public function getFuel(): ?string { return $this->fuel; }
     public function setFuel(string $fuel): static { $this->fuel = $fuel; return $this; }
+    public function getDepartureComment(): ?string { return $this->departureComment; }
+    public function setDepartureComment(?string $departureComment): static { $this->departureComment = $departureComment; return $this; }
+    public function getArrivalComment(): ?string { return $this->arrivalComment; }
+    public function setArrivalComment(?string $arrivalComment): static { $this->arrivalComment = $arrivalComment; return $this; }
     public function getStartDate(): ?\DateTimeInterface { return $this->start_date; }
     public function setStartDate(\DateTimeInterface $start_date): static { $this->start_date = $start_date; return $this; }
     public function getEndDate(): ?\DateTimeInterface { return $this->end_date; }

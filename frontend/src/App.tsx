@@ -38,26 +38,53 @@ interface FichaData {
     destinos: Destino[];
 }
 
+// --- INTERFACES ACTUALIZADAS ---
+
+// Definición de la estructura de la Inspección
+interface InspectionData {
+    id: number;
+    type: 'photo' | 'signature' | 'text';
+    part: string; // 'front', 'general_comment_salida', 'entrada', etc.
+    comment: string | null;
+    photo_url: string | null;
+    signature_conductor_url: string | null;
+    signature_approver_url: string | null;
+}
+
+// Estructura de los detalles del Pase (viene de GET /api/pass/{id})
+interface PassDetails {
+    id: number;
+    mileage: number;
+    fuel: string;
+    comment_salida: string | null;
+    comment_entrada: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    status: string;
+    comission_folio: string | null;
+    inspections: InspectionData[]; // Array de todas las inspecciones (fotos, firmas, comentarios)
+}
+
+// FichaGuardada, usando PassDetails
 interface FichaGuardada extends FichaData {
+    id: number; // ID de la Comission en BD
+    folio: string;
     fechaCreacion: string;
     estado: 'creada' | 'con-entrada' | 'con-salida' | 'completada';
-    // Datos adicionales de entrada/salida
-    entradaData?: {
-        fechaEntrada: string;
-        horaEntrada: string;
-        kmEntrada: string;
-        fotos: any;
-        firmaConductor: string;
-        firmaAprobador: string;
-    };
+
+    // Datos mínimos del pase (solo para saber si existe y su ID)
     salidaData?: {
-        fechaSalida: string;
-        horaSalida: string;
-        kmSalida: string;
-        fotos: any;
-        firmaConductor: string;
-        firmaAprobador: string;
-    };
+        pass_id?: number;
+        // Eliminamos los campos redundantes (fotos, firmas, km)
+        // ya que ahora se cargan vía passDetails
+    } & any;
+
+    entradaData?: {
+        // Eliminamos los campos redundantes
+    } & any;
+
+    // 🟢 ESTE CAMPO ALMACENARÁ TODA LA EVIDENCIA (fotos, firmas, comentarios)
+    passDetails: PassDetails | null;
 }
 
 // Legacy interface for compatibility
@@ -157,16 +184,14 @@ export default function App() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [tempCargoInput, setTempCargoInput] = useState('');
 
-    // Cargar drivers y vehicles desde la BD al montar la app
+    // Cargar datos iniciales desde la BD al montar la app
     useEffect(() => {
-        const loadDriversAndVehicles = async () => {
+        const loadInitialData = async () => {
             try {
-                console.log('🔄 Cargando drivers y vehicles desde la BD...');
+                console.log('🔄 Cargando datos iniciales desde la BD...');
 
                 // Cargar drivers
                 const driversResponse = await driversAPI.list();
-                console.log('✅ Drivers response:', driversResponse.data);
-
                 const driversData = driversResponse.data.map((d: any) => ({
                     value: d.name.toLowerCase().replace(/\s+/g, '-'),
                     label: d.name,
@@ -174,12 +199,9 @@ export default function App() {
                     id: d.id
                 }));
                 setDrivers(driversData);
-                console.log('✅ Drivers cargados:', driversData);
 
                 // Cargar vehicles
                 const vehiclesResponse = await vehiclesAPI.list();
-                console.log('✅ Vehicles response:', vehiclesResponse.data);
-
                 const vehiclesData = vehiclesResponse.data.map((v: any) => ({
                     value: `${v.brand}-${v.model}`.toLowerCase().replace(/\s+/g, '-'),
                     label: `${v.brand} ${v.model}`,
@@ -190,17 +212,76 @@ export default function App() {
                     id: v.id
                 }));
                 setVehicles(vehiclesData);
-                console.log('✅ Vehicles cargados:', vehiclesData);
+
+                // Cargar fichas guardadas
+                const fichasResponse = await comissionsAPI.list();
+                setFichasGuardadas(fichasResponse.data as FichaGuardada[]);
 
                 toast.success('Datos cargados desde la base de datos');
             } catch (error) {
-                console.error('❌ Error al cargar drivers y vehicles:', error);
+                console.error('❌ Error al cargar datos iniciales:', error);
                 toast.error('Error al cargar datos iniciales desde la BD');
             }
         };
 
-        loadDriversAndVehicles();
+        loadInitialData();
+
+        const generateFolio = () => {
+            const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
+            const number = currentCounter.toString().padStart(4, '0');
+            localStorage.setItem('folioCounter', (currentCounter + 1).toString());
+            return `PV-${number}`;
+        };
+
+        setFichaData(prev => ({
+            ...prev,
+            folio: generateFolio()
+        }));
     }, []);
+
+    // Cargar detalles del pase (evidencias) al ver una ficha
+    useEffect(() => {
+        const fetchPassDetails = async () => {
+            if (currentScreen !== 'detalle-ficha' || !selectedFicha) {
+                return;
+            }
+
+            const passId = selectedFicha.salidaData?.pass_id;
+
+            // No hacer nada si no hay passId o si los detalles ya están cargados
+            if (!passId || selectedFicha.passDetails) {
+                return;
+            }
+
+            try {
+                toast.info('Cargando evidencias de la ficha...');
+                const response = await passAPI.getDetails(passId);
+
+                if (response.data.success) {
+                    const passDetails = response.data.pass;
+
+                    // Actualizar la ficha en el estado global y en la ficha seleccionada
+                    const updatedFichas = fichasGuardadas.map(f =>
+                        f.folio === selectedFicha.folio
+                            ? { ...f, passDetails }
+                            : f
+                    );
+                    setFichasGuardadas(updatedFichas);
+                    setSelectedFicha(prev => (prev ? { ...prev, passDetails } : null));
+
+                    toast.success('Evidencias cargadas correctamente.');
+                } else {
+                    throw new Error(response.data.message || 'Respuesta no exitosa de la API');
+                }
+            } catch (error) {
+                console.error('❌ Error al cargar los detalles del pase:', error);
+                toast.error('No se pudieron cargar las evidencias (fotos, firmas).');
+            }
+        };
+
+        fetchPassDetails();
+    }, [currentScreen, selectedFicha]);
+
 
     // Estados completos de México con códigos numéricos para la API
     useEffect(() => {
@@ -288,155 +369,6 @@ export default function App() {
             }
         }
     };
-
-    // Cargar fichas guardadas y generar folio al iniciar
-    useEffect(() => {
-        // Cargar fichas guardadas desde la BD
-        const loadFichasGuardadas = async () => {
-            try {
-                const response = await comissionsAPI.list();
-                const fichasFromDB = response.data.map((c: any) => ({
-                    folio: c.folio.toString(),
-                    conductorNombre: c.driver,
-                    conductorCargo: '', // No disponible en la respuesta actual
-                    vehiculo: c.vehicle.toLowerCase().replace(/\s+/g, '-'),
-                    destinos: [], // Los destinos se cargarían con otro endpoint si fuera necesario
-                    fechaCreacion: c.created_at,
-                    estado: 'creada' as const
-                }));
-
-                setFichasGuardadas(fichasFromDB);
-            } catch (error) {
-                console.error('Error al cargar fichas:', error);
-                // Fallback a localStorage si hay error
-                try {
-                    const stored = localStorage.getItem('fichasGuardadas');
-                    if (stored) {
-                        const fichas = JSON.parse(stored);
-                        // Agregar datos de ejemplo para testing si no hay fichas
-                        if (fichas.length === 0) {
-                            // Ficha creada (sin entrada/salida)
-                            const fichaCreada: FichaGuardada = {
-                                folio: 'PV-0001',
-                                conductorNombre: 'Oscar Pérez',
-                                conductorCargo: 'Técnico',
-                                vehiculo: 'toyota-hilux',
-                                destinos: [{ id: '1', estado: 'nuevo-leon', ciudad: 'monterrey', comentario: 'Entrega urgente' }],
-                                fechaCreacion: new Date().toISOString(),
-                                estado: 'creada'
-                            };
-
-                            // Ficha con entrada registrada
-                            const fichaConEntrada: FichaGuardada = {
-                                folio: 'PV-0002',
-                                conductorNombre: 'Nancy Godínez',
-                                conductorCargo: 'Chofer',
-                                vehiculo: 'ford-f150',
-                                destinos: [{ id: '1', estado: 'jalisco', ciudad: 'guadalajara', comentario: 'Servicio de mantenimiento' }],
-                                fechaCreacion: new Date(Date.now() - 86400000).toISOString(), // Ayer
-                                estado: 'con-entrada',
-                                entradaData: {
-                                    fechaEntrada: '2024-12-16',
-                                    horaEntrada: '08:30',
-                                    kmEntrada: '45,230',
-                                    fotos: {
-                                        fotoFrontal: 'data:image/png;base64,photo-frontal',
-                                        fotoLatDer: 'data:image/png;base64,photo-lateral-der',
-                                        fotoLatIzq: 'data:image/png;base64,photo-lateral-izq',
-                                        fotoPosterior: 'data:image/png;base64,photo-posterior'
-                                    },
-                                    firmaConductor: 'signature-data-conductor',
-                                    firmaAprobador: 'signature-data-aprobador'
-                                }
-                            };
-
-                            // Ficha completada (con entrada y salida)
-                            const fichaCompletada: FichaGuardada = {
-                                folio: 'PV-0003',
-                                conductorNombre: 'Dulce Jimena López',
-                                conductorCargo: 'Supervisora',
-                                vehiculo: 'nissan-sentra',
-                                destinos: [
-                                    { id: '1', estado: 'guanajuato', ciudad: 'leon', comentario: 'Primera parada' },
-                                    { id: '2', estado: 'queretaro', ciudad: 'queretaro', comentario: 'Segunda entrega' }
-                                ],
-                                fechaCreacion: new Date(Date.now() - 172800000).toISOString(), // Hace 2 días
-                                estado: 'completada',
-                                entradaData: {
-                                    fechaEntrada: '2024-12-14',
-                                    horaEntrada: '07:15',
-                                    kmEntrada: '38,920',
-                                    fotos: {
-                                        fotoFrontal: 'data:image/png;base64,photo-frontal-completada',
-                                        fotoLatDer: 'data:image/png;base64,photo-lateral-der-completada',
-                                        fotoLatIzq: 'data:image/png;base64,photo-lateral-izq-completada',
-                                        fotoPosterior: 'data:image/png;base64,photo-posterior-completada'
-                                    },
-                                    firmaConductor: 'signature-data-conductor-completada',
-                                    firmaAprobador: 'signature-data-aprobador-completada'
-                                },
-                                salidaData: {
-                                    fechaSalida: '2024-12-15',
-                                    horaSalida: '16:45',
-                                    kmSalida: '39,156',
-                                    fotos: {
-                                        fotoFrontal: 'data:image/png;base64,photo-frontal-salida',
-                                        fotoLatDer: 'data:image/png;base64,photo-lateral-der-salida',
-                                        fotoLatIzq: 'data:image/png;base64,photo-lateral-izq-salida',
-                                        fotoPosterior: 'data:image/png;base64,photo-posterior-salida'
-                                    },
-                                    firmaConductor: 'signature-data-conductor-salida',
-                                    firmaAprobador: 'signature-data-aprobador-salida'
-                                }
-                            };
-
-                            // Otra ficha creada
-                            const otraFichaCreada: FichaGuardada = {
-                                folio: 'PV-0004',
-                                conductorNombre: 'Bladimir Rivera',
-                                conductorCargo: 'Operador',
-                                vehiculo: 'chevrolet-aveo',
-                                destinos: [
-                                    { id: '1', estado: 'veracruz', ciudad: 'veracruz', comentario: 'Entrega de documentos' }
-                                ],
-                                fechaCreacion: new Date(Date.now() - 259200000).toISOString(), // Hace 3 días
-                                estado: 'creada'
-                            };
-
-                            fichas.push(fichaCreada, fichaConEntrada, fichaCompletada, otraFichaCreada);
-                        }
-                        setFichasGuardadas(fichas);
-                        // Guardar fichas de ejemplo si existen
-                        if (fichas.length > 0) {
-                            saveFichasToLocalStorage(fichas);
-                        }
-                    }
-                } catch (localError) {
-                    console.error('Error loading fichas from localStorage:', localError);
-                }
-            }
-        };
-
-        const generateFolio = () => {
-            // Get current counter from localStorage, default to 1
-            const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
-
-            // Format with leading zeros (0001, 0002, etc.)
-            const number = currentCounter.toString().padStart(4, '0');
-
-            // Increment counter for next time
-            localStorage.setItem('folioCounter', (currentCounter + 1).toString());
-
-            return `PV-${number}`;
-        };
-
-        loadFichasGuardadas();
-
-        setFichaData(prev => ({
-            ...prev,
-            folio: generateFolio()
-        }));
-    }, []);
 
     const updateFichaData = (field: keyof FichaData, value: string | Destino[]) => {
         setFichaData(prev => ({ ...prev, [field]: value }));
@@ -571,14 +503,18 @@ export default function App() {
                 // Crear ficha local para mantener compatibilidad con la UI
                 const nuevaFicha: FichaGuardada = {
                     ...fichaData,
+                    id: comissionId,
                     folio: comissionResponse.data.comission.folio.toString(),
                     fechaCreacion: comissionResponse.data.comission.created_at,
-                    estado: 'creada'
+                    estado: 'creada',
+                    passDetails: null
                 };
 
                 const fichasActualizadas = [...fichasGuardadas, nuevaFicha];
                 setFichasGuardadas(fichasActualizadas);
 
+                // Seleccionar la nueva ficha y navegar a detalles
+                setSelectedFicha(nuevaFicha);
                 toast.success('Ficha guardada en la base de datos');
                 setCurrentScreen('detalle-ficha');
             }
@@ -597,57 +533,43 @@ export default function App() {
     };
 
     const handleSalidaComplete = async (salidaData: any) => {
-        // 1. Validar que tenemos la ficha seleccionada y su folio
         if (!selectedFicha || !selectedFicha.folio) {
             console.error('Error: selectedFicha no está definida o le falta el folio.');
-            toast.error("Error", { description: "No se pudo obtener el Folio de la Ficha (Comisión) para el registro de Salida." });
+            toast.error("Error", { description: "No se pudo obtener el Folio de la Ficha para el registro de Salida." });
             return;
         }
 
         try {
             const comissionFolio = selectedFicha.folio.replace('PV-', '');
 
-            // 🟢 1. CONSTRUIR EL PAYLOAD COMPLETO
             const payload = {
-                comission_id: comissionFolio, // FOLIO para buscar la comisión
+                comission_id: comissionFolio,
                 mileage: parseInt(salidaData.kmSalida?.replace(/,/g, '') || '0'),
                 fuel: salidaData.combustible?.toString() || '8',
-                comment: salidaData.comentario || '',
+                departure_comment: salidaData.departure_comment || '',
                 start_date: new Date().toISOString(),
-
-                // 🟢 DATOS DE FIRMAS (Base64)
-                signature_driver: salidaData.firmas?.firmaConductor || null,
-                signature_approver: salidaData.firmas?.firmaAprobador || null,
-
-                // 🟢 DATOS DE INSPECCIONES (Fotos)
-                // Esto asume que el backend (PassController) está preparado para recibir esta estructura.
+                signature_conductor: salidaData.firmaConductor || null,
+                signature_approver: salidaData.firmaAprobador || null,
                 inspections: [
-                    // Inspección de Kilometraje
                     salidaData.fotos?.fotoKilometraje ? {
                         type: 'photo',
                         part: 'mileage',
                         photo: salidaData.fotos.fotoKilometraje,
                         comment: salidaData.kmComentario
                     } : null,
-                    // Inspecciones Exterior
                     salidaData.fotos?.fotoFrontal ? { type: 'photo', part: 'front', photo: salidaData.fotos.fotoFrontal } : null,
                     salidaData.fotos?.fotoLatDer ? { type: 'photo', part: 'right_side', photo: salidaData.fotos.fotoLatDer } : null,
                     salidaData.fotos?.fotoLatIzq ? { type: 'photo', part: 'left_side', photo: salidaData.fotos.fotoLatIzq } : null,
                     salidaData.fotos?.fotoPosterior ? { type: 'photo', part: 'back', photo: salidaData.fotos.fotoPosterior } : null,
-
-                    // Inspecciones Interior (si es un array de objetos con foto y tipo)
                     ...(salidaData.fotosInteriores || []).map((interior: any) => interior.foto ? {
                         type: 'photo',
                         part: 'interior',
                         photo: interior.foto,
-                        comment: interior.tipo, // Usar el tipo de interior como comentario
+                        comment: interior.tipo,
                     } : null),
-
-                ].filter(Boolean), // Filtramos nulos para solo enviar inspecciones con datos
+                ].filter(Boolean),
             };
 
-            // 2. Llamada a la API
-            // passAPI.salida retorna { success: boolean, message: string, pass_id: number }
             const response = await passAPI.salida(payload);
             const passId = response.data.pass_id;
 
@@ -655,8 +577,7 @@ export default function App() {
                 throw new Error("El servidor no devolvió el ID del Pase creado.");
             }
 
-            // 3. Actualizar ficha con datos de salida localmente, incluyendo el pass_id
-            const newSalidaData = { ...salidaData, pass_id: passId }; // Guardamos el pass_id en la ficha local
+            const newSalidaData = { ...salidaData, pass_id: passId };
 
             const fichasActualizadas = fichasGuardadas.map(ficha => {
                 if (ficha.folio === selectedFicha.folio) {
@@ -681,10 +602,7 @@ export default function App() {
         }
     };
 
-
-// --- FUNCIÓN PARA REGISTRAR ENTRADA ---
     const handleEntradaComplete = async (entradaData: any) => {
-        // 1. Validar que tenemos el ID del Pase (Pass) que se creó en la Salida
         const passId = selectedFicha?.salidaData?.pass_id;
 
         if (!passId) {
@@ -694,51 +612,38 @@ export default function App() {
         }
 
         try {
-            // 🟢 1. CONSTRUIR EL PAYLOAD COMPLETO para la Entrada
             const payload = {
-                pass_id: passId, // <-- Usamos el pass_id guardado de la Salida
+                pass_id: passId,
                 end_date: new Date().toISOString(),
                 mileage: parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0'),
                 fuel: entradaData.combustible?.toString() || '8',
-                comment: entradaData.comentario || '',
-
-                // 🟢 DATOS DE FIRMAS DE ENTRADA (Base64)
-                signature_driver: entradaData.firmas?.firmaConductor || null,
-                signature_approver: entradaData.firmas?.firmaAprobador || null,
-
-                // 🟢 DATOS DE INSPECCIONES DE ENTRADA (Fotos)
+                arrival_comment: entradaData.arrival_comment || '',
+                signature_conductor: entradaData.firmaConductor || null,
+                signature_approver: entradaData.firmaAprobador || null,
                 inspections: [
-                    // Inspección de Kilometraje
                     entradaData.fotos?.fotoKilometraje ? {
                         type: 'photo',
-                        part: 'mileage_entry', // Usar un nombre diferente para la entrada
+                        part: 'mileage_entry',
                         photo: entradaData.fotos.fotoKilometraje,
                         comment: entradaData.kmComentario
                     } : null,
-                    // Inspecciones Exterior de Entrada
                     entradaData.fotos?.fotoFrontal ? { type: 'photo', part: 'front_entry', photo: entradaData.fotos.fotoFrontal } : null,
                     entradaData.fotos?.fotoLatDer ? { type: 'photo', part: 'right_side_entry', photo: entradaData.fotos.fotoLatDer } : null,
                     entradaData.fotos?.fotoLatIzq ? { type: 'photo', part: 'left_side_entry', photo: entradaData.fotos.fotoLatIzq } : null,
                     entradaData.fotos?.fotoPosterior ? { type: 'photo', part: 'back_entry', photo: entradaData.fotos.fotoPosterior } : null,
-
-                    // Inspecciones Interior de Entrada
                     ...(entradaData.fotosInteriores || []).map((interior: any) => interior.foto ? {
                         type: 'photo',
                         part: 'interior_entry',
                         photo: interior.foto,
-                        comment: interior.tipo, // Usar el tipo de interior como comentario
+                        comment: interior.tipo,
                     } : null),
-
-                ].filter(Boolean), // Filtramos nulos para solo enviar inspecciones con datos
+                ].filter(Boolean),
             };
 
-            // 2. Llamada a la API
             await passAPI.entrada(payload);
 
-            // 3. Actualizar ficha con datos de entrada localmente
             const fichasActualizadas = fichasGuardadas.map(ficha => {
                 if (ficha.folio === selectedFicha.folio) {
-                    // Al registrar la entrada, se completa el ciclo (asumimos que la salida ya existía)
                     const nuevoEstado = 'completada';
                     return { ...ficha, estado: nuevoEstado as const, entradaData };
                 }
@@ -814,7 +719,7 @@ export default function App() {
                 console.log(`✅ Estructura encontrada: data.response.cities (${data.response.cities.length} ciudades)`);
                 ciudadesList = data.response.cities;
             } else if (data.cities && Array.isArray(data.cities)) {
-                console.log(`��� Estructura encontrada: data.cities (${data.cities.length} ciudades)`);
+                console.log(`✅ Estructura encontrada: data.cities (${data.cities.length} ciudades)`);
                 ciudadesList = data.cities;
             } else if (Array.isArray(data)) {
                 console.log(`✅ Estructura encontrada: data directa (${data.length} ciudades)`);
@@ -1335,25 +1240,35 @@ export default function App() {
         setShowDeleteModal(true);
     };
 
-    const handleDeleteFicha = () => {
+    const handleDeleteFicha = async () => {
         if (!fichaToDelete) return;
 
-        // Filtrar la ficha eliminada
-        const fichasActualizadas = fichasGuardadas.filter(ficha => ficha.folio !== fichaToDelete);
+        try {
+            // Llamar a la API para el borrado lógico
+            const response = await comissionsAPI.delete(fichaToDelete);
 
-        // Si la ficha eliminada era la seleccionada, deseleccionar
-        if (selectedFicha?.folio === fichaToDelete) {
-            setSelectedFicha(null);
+            if (response.data.success) {
+                // Filtrar la ficha eliminada del estado local
+                const fichasActualizadas = fichasGuardadas.filter(ficha => ficha.folio !== fichaToDelete);
+                setFichasGuardadas(fichasActualizadas);
+
+                // Si la ficha eliminada era la seleccionada, deseleccionar
+                if (selectedFicha?.folio === fichaToDelete) {
+                    setSelectedFicha(null);
+                }
+
+                toast.success(`Ficha ${fichaToDelete} eliminada correctamente`);
+            } else {
+                throw new Error(response.data.message || 'Error en la respuesta de la API');
+            }
+        } catch (error) {
+            console.error('Error al eliminar la ficha:', error);
+            toast.error('Error al eliminar la ficha');
+        } finally {
+            // Cerrar modal y limpiar estado
+            setShowDeleteModal(false);
+            setFichaToDelete(null);
         }
-
-        // Guardar en localStorage con manejo de QuotaExceeded
-        const fichasGuardadasFinal = saveFichasToLocalStorage(fichasActualizadas);
-        setFichasGuardadas(fichasGuardadasFinal);
-        toast.success(`Ficha ${fichaToDelete} eliminada correctamente`);
-
-        // Cerrar modal y limpiar estado
-        setShowDeleteModal(false);
-        setFichaToDelete(null);
     };
 
     // Funciones legacy para compatibilidad
@@ -1907,297 +1822,6 @@ export default function App() {
                         )}
                     </div>
                 </div>
-            ) : currentScreen === 'resumen-entrada' ? (
-                <div key="resumen-entrada">
-                    <ResumenEntrada
-                        folio={formData.folio}
-                        conductor={getSelectedDriverName()}
-                        horaSalida={formData.horaSalida}
-                        onBack={handleBackToRegistroEntrada}
-                        onSendToEmail={handleSendResumeToEmail}
-                        comisionData={{
-                            destinos: formData.destinos,
-                            fechaSalida: formData.fechaSalida,
-                            fechaEntrega: formData.fechaEntrega,
-                            horaEntrega: formData.horaEntrega,
-                            vehiculo: getSelectedVehicleName()
-                        }}
-                        entradaData={tempEntradaData}
-                    />
-                </div>
-            ) : currentScreen === 'envio-correo' ? (
-                <div key="envio-correo">
-                    <EnvioCorreo
-                        folio={formData.folio}
-                        conductor={getSelectedDriverName()}
-                        onBack={handleBackToResumenEntrada}
-                        onComplete={handleCompleteFlow}
-                        comisionData={{
-                            destinos: formData.destinos,
-                            fechaSalida: formData.fechaSalida,
-                            fechaEntrega: formData.fechaEntrega,
-                            horaEntrega: formData.horaEntrega,
-                            vehiculo: getSelectedVehicleName()
-                        }}
-                    />
-                </div>
-            ) : currentScreen === 'confirmacion' ? (
-                <div key="confirmacion">
-                    <div className="min-h-screen bg-gray-50 pb-24">
-                        {/* Safe Area Top */}
-                        <div className="h-12 bg-[rgba(0,0,0,1)]"></div>
-
-                        {/* Header */}
-                        <div className="space-y-0">
-                            {/* Logo header with black background */}
-                            <div className="bg-black px-[16px] py-[5px]">
-                                <div className="flex items-center justify-center">
-                                    <img
-                                        src={grupoOptimoLogo}
-                                        alt="GRUPO OPTIMO"
-                                        className="h-12 w-auto object-contain px-[54px] py-[0px]"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Title section */}
-                            <div className="bg-white px-4 py-4 border-b border-gray-200">
-                                <h1 className="text-black text-center text-xl">Comisión guardada</h1>
-                            </div>
-                        </div>
-
-                        {/* Content */}
-                        <div className="max-w-[360px] mx-auto px-4 py-6">
-
-                            {/* Confirmation Card */}
-                            <div className="bg-white rounded-lg p-6 space-y-4 shadow-md">
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-start">
-                                        <div className="space-y-1">
-                                            <p className="text-gray-500 text-sm font-bold">Conductor</p>
-                                            <p className="text-black">{getSelectedDriverName()}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-black">Folio: {formData.folio}</p>
-                                        </div>
-                                    </div>
-
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setShowDetailsModal(true)}
-                                        className="w-full"
-                                    >
-                                        <Eye className="h-4 w-4 mr-2" />
-                                        Ver detalles completos
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Sticky CTA */}
-                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 shadow-lg">
-                            <div className="max-w-[360px] mx-auto space-y-3">
-                                <Button
-                                    className="w-full h-12"
-                                    onClick={handleGoToRegistroEntrada}
-                                >
-                                    Agregar entrada
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="w-full h-12"
-                                    onClick={handleCreateNewComision}
-                                >
-                                    Crear nueva comisión
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* Details Modal */}
-                        {showDetailsModal && (
-                            <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-                                <DialogContent className="max-w-[340px] rounded-lg max-h-[80vh] overflow-y-auto">
-                                    <DialogHeader>
-                                        <DialogTitle>Detalles de la comisión</DialogTitle>
-                                        <DialogDescription>
-                                            Información completa de la comisión incluyendo datos de salida, entrada y ruta
-                                        </DialogDescription>
-                                    </DialogHeader>
-
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                                <p className="text-gray-500">Folio</p>
-                                                <p className="text-black">{formData.folio}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Conductor</p>
-                                                <p className="text-black">{getSelectedDriverName()}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Vehículo</p>
-                                                <p className="text-black">{getSelectedVehicleName()}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Salida</p>
-                                                <p className="text-black">{formData.fechaSalida}</p>
-                                                <p className="text-gray-400 text-xs">{formData.horaSalida}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Entrega</p>
-                                                <p className="text-black">{formData.fechaEntrega}</p>
-                                                <p className="text-gray-400 text-xs">{formData.horaEntrega}</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Información de salida */}
-                                        <div className="border-t pt-4">
-                                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                                                <div className="flex items-center gap-2 mb-4">
-                                                    <div className="h-2 w-2 bg-black rounded-full"></div>
-                                                    <p className="text-black">Información de salida registrada</p>
-                                                </div>
-
-                                                {/* Kilómetros y Combustible de salida */}
-                                                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                                                    <div>
-                                                        <p className="text-gray-600">Kilómetros de salida</p>
-                                                        <p className="text-black">42,845 km</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-gray-600">Combustible inicial</p>
-                                                        <p className="text-black">8/8 (Lleno)</p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Estado del vehículo en salida */}
-                                                <div className="mb-4 pb-3 border-b border-gray-200">
-                                                    <p className="text-gray-600 text-sm mb-2">Estado del vehículo</p>
-                                                    <div className="bg-white rounded-lg p-3 border border-gray-300">
-                                                        <div className="flex items-center gap-2">
-                                                            <CheckCircle className="h-4 w-4 text-black" />
-                                                            <span className="text-gray-700 text-sm">Inspección inicial completada</span>
-                                                        </div>
-                                                        <p className="text-xs text-gray-500 ml-6">Verificación de luces, frenos y documentos</p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Documentos y permisos */}
-                                                <div className="mb-4 pb-3 border-b border-gray-200">
-                                                    <p className="text-gray-600 text-sm mb-2">Documentación verificada</p>
-                                                    <div className="space-y-2">
-                                                        <div className="bg-white rounded-lg p-3 border border-gray-300">
-                                                            <div className="flex items-center gap-2">
-                                                                <CheckCircle className="h-4 w-4 text-black" />
-                                                                <span className="text-gray-700 text-sm">Licencia de manejo</span>
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 ml-6">Vigente y en regla</p>
-                                                        </div>
-                                                        <div className="bg-white rounded-lg p-3 border border-gray-300">
-                                                            <div className="flex items-center gap-2">
-                                                                <CheckCircle className="h-4 w-4 text-black" />
-                                                                <span className="text-gray-700 text-sm">Tarjeta de circulación</span>
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 ml-6">Verificada y actualizada</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Fecha y hora de salida */}
-                                                <div className="text-center">
-                                                    <p className="text-gray-600 text-sm">Salida autorizada</p>
-                                                    <p className="text-gray-600 text-sm">{formData.fechaSalida} - {formData.horaSalida}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Información de entrada si existe */}
-                                        {selectedComision?.estado === 'con-entrada' && selectedComision?.entradaData && (
-                                            <div className="border-t pt-4">
-                                                <div className="bg-gray-50 border border-gray-400 rounded-lg p-4 mb-4">
-                                                    <div className="flex items-center gap-2 mb-4">
-                                                        <div className="h-2 w-2 bg-gray-600 rounded-full"></div>
-                                                        <p className="text-black">Información de entrada registrada</p>
-                                                    </div>
-
-                                                    {/* Kilómetros y Combustible */}
-                                                    <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                                                        <div>
-                                                            <p className="text-gray-600">Kilómetros de entrada</p>
-                                                            <p className="text-black">{selectedComision.entradaData.kmEntrada} km</p>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-gray-600">Nivel de combustible</p>
-                                                            <p className="text-black">{selectedComision.entradaData.combustible}/8</p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Fotos del vehículo */}
-                                                    <div className="mb-4 pb-3 border-b border-gray-300">
-                                                        <p className="text-gray-600 text-sm mb-2">Evidencia fotográfica</p>
-                                                        <div className="bg-white rounded-lg p-3 border border-gray-400">
-                                                            <div className="flex items-center gap-2">
-                                                                <CheckCircle className="h-4 w-4 text-black" />
-                                                                <span className="text-gray-700 text-sm">Fotos del vehículo capturadas</span>
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 ml-6">Estado general, carrocería y compartimientos</p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Firmas */}
-                                                    <div className="mb-4 pb-3 border-b border-gray-300">
-                                                        <p className="text-gray-600 text-sm mb-2">Firmas completadas</p>
-                                                        <div className="space-y-2">
-                                                            <div className="bg-white rounded-lg p-3 border border-gray-400">
-                                                                <div className="flex items-center gap-2">
-                                                                    <CheckCircle className="h-4 w-4 text-black" />
-                                                                    <span className="text-gray-700 text-sm">Firma del conductor</span>
-                                                                </div>
-                                                                <p className="text-xs text-gray-500 ml-6">Autorización y validación de entrega</p>
-                                                            </div>
-                                                            <div className="bg-white rounded-lg p-3 border border-gray-400">
-                                                                <div className="flex items-center gap-2">
-                                                                    <CheckCircle className="h-4 w-4 text-black" />
-                                                                    <span className="text-gray-700 text-sm">Firma de quien aprueba</span>
-                                                                </div>
-                                                                <p className="text-xs text-gray-500 ml-6">Autorización de recepción</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Fecha y hora de registro */}
-                                                    {selectedComision.entradaData.fotosFechas && (
-                                                        <div className="text-center">
-                                                            <p className="text-gray-600 text-sm">Registro completado</p>
-                                                            <p className="text-gray-600 text-sm">{selectedComision.entradaData.fotosFechas}</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="border-t pt-4">
-                                            <p className="text-gray-500 text-sm mb-2">Ruta</p>
-                                            <div className="space-y-2">
-                                                {formData.destinos.map((destino, index) => (
-                                                    <div key={destino.id} className="text-sm">
-                                                        <p className="text-black">
-                                                            {index + 1}. {getEstadoLabel(destino.estado)}, {getCiudadLabel(destino.estado, destino.ciudad)}
-                                                        </p>
-                                                        {destino.comentario && (
-                                                            <p className="text-gray-400 text-xs ml-3">{destino.comentario}</p>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </DialogContent>
-                            </Dialog>
-                        )}
-                    </div>
-                </div>
             ) : currentScreen === 'registro-entrada' ? (
                 <div key="registro-entrada">
                     <RegistroEntrada
@@ -2433,7 +2057,7 @@ export default function App() {
                         ficha={selectedFicha || {
                             folio: fichaData.folio,
                             conductorNombre: fichaData.conductorNombre,
-                            conductorCargo: fichaData.conductorCargo,
+                            conductorCargo: ficha.conductorCargo,
                             vehiculo: fichaData.vehiculo,
                             destinos: fichaData.destinos,
                             fechaCreacion: new Date().toISOString(),

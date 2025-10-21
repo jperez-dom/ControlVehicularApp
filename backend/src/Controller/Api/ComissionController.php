@@ -4,6 +4,8 @@ namespace App\Controller\Api;
 
 use App\Entity\Comission;
 use App\Entity\Driver;
+use App\Entity\Pass;
+use App\Entity\Place;
 use App\Entity\Vehicle;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -13,22 +15,64 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class ComissionController extends AbstractController
 {
-    // Listar solo fichas activas
+    // Listar fichas con detalles para persistencia en frontend
     #[Route('/api/comissions', name: 'api_comission_list', methods: ['GET'])]
     public function list(EntityManagerInterface $em): JsonResponse
     {
-        $comissions = $em->getRepository(Comission::class)->findBy(['status' => '1']);
+        $comissions = $em->getRepository(Comission::class)->findBy(['status' => '1'], ['created_at' => 'DESC']);
 
-        $data = array_map(fn($c) => [
-            'id' => $c->getId(),
-            'folio' => $c->getFolio(),
-            'driver' => $c->getDriver()?->getName(),
-            'vehicle' => $c->getVehicle()?->getModel() . ' ' . $c->getVehicle()?->getBrand(),
-            'city' => $c->getCity(),
-            'state' => $c->getState(),
-            'status' => $c->getStatus(),
-            'created_at' => $c->getCreatedAt()?->format('Y-m-d H:i:s'),
-        ], $comissions);
+        $data = [];
+        foreach ($comissions as $comission) {
+            // Find the associated Pass
+            $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
+
+            // Determine the workflow state
+            $estado = 'creada';
+            $salidaData = null;
+            $entradaData = null; // For UI consistency
+
+            if ($pass) {
+                // Default end date in the app logic is '1970-01-01'
+                if ($pass->getEndDate() && $pass->getEndDate()->format('Y') > 1970) {
+                    $estado = 'completada';
+                    $entradaData = ['pass_id' => $pass->getId()]; // Simplified
+                } else {
+                    $estado = 'con-salida';
+                }
+                $salidaData = ['pass_id' => $pass->getId()];
+            }
+
+            // Find associated destinations (Places)
+            $places = $em->getRepository(Place::class)->findBy(['comission' => $comission]);
+            $destinos = array_map(fn($p) => [
+                'id' => (string)$p->getId(),
+                'estado' => $p->getState(),
+                'ciudad' => $p->getCity(),
+                'comentario' => $p->getComment(),
+            ], $places);
+
+            // Vehicle value format to match frontend's format
+            $vehicle = $comission->getVehicle();
+            $vehicleValue = '';
+            if ($vehicle) {
+                $vehicleValue = strtolower($vehicle->getBrand() . '-' . $vehicle->getModel());
+                $vehicleValue = preg_replace('/\s+/', '-', $vehicleValue);
+            }
+
+            $data[] = [
+                'id' => $comission->getId(),
+                'folio' => (string)$comission->getFolio(),
+                'conductorNombre' => $comission->getDriver()?->getName(),
+                'conductorCargo' => $comission->getDriver()?->getPosition(),
+                'vehiculo' => $vehicleValue, // The value 'toyota-hilux'
+                'destinos' => $destinos,
+                'fechaCreacion' => $comission->getCreatedAt()?->format('Y-m-d H:i:s'),
+                'estado' => $estado,
+                'salidaData' => $salidaData,
+                'entradaData' => $entradaData, // To know if entry is complete
+                'passDetails' => null, // This is a frontend-only field, initialize to null
+            ];
+        }
 
         return new JsonResponse($data);
     }
