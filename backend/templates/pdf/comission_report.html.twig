@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte de Comisión - {{ comission.folio }}</title>
+    <style>
+        * { font-family: DejaVu Sans, Arial, sans-serif; }
+        body { font-size: 12px; color: #111; }
+        .header { display:flex; align-items:center; gap:16px; padding:12px 0; border-bottom:2px solid #000; }
+        .logo { height: 48px; }
+        .title { font-size:20px; font-weight:700; }
+        .meta, .section { margin-top: 14px; }
+        .meta table, .section table { width:100%; border-collapse: collapse; }
+        th, td { border:1px solid #ccc; padding:6px; vertical-align: top; }
+        th { background:#f6f6f6; text-align:left; }
+        .section h3 { margin: 10px 0 6px; font-size: 14px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .photo { border:1px solid #ddd; padding:4px; text-align:center; height: 180px; }
+        .photo img { max-height: 150px; max-width: 100%; }
+        .sign { height: 110px; border:1px dashed #bbb; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:6px; }
+        .foot { margin-top: 18px; font-size: 10px; color:#666; text-align:center; }
+    </style>
+</head>
+<body>
+<div class="header">
+    {% if logoPath %}<img class="logo" src="{{ logoPath }}" alt="GRUPO OPTIMO" />{% endif %}
+    <div class="title">Reporte de Comisión</div>
+</div>
+
+<div class="meta">
+    <table>
+        <tr>
+            <th>Folio</th><td>{{ comission.folio }}</td>
+            <th>Conductor</th><td>{{ comission.driverName }}</td>
+        </tr>
+        <tr>
+            <th>Vehículo</th><td>{{ comission.vehicleName }}</td>
+            <th>Estado</th><td>{{ comission.status }}</td>
+        </tr>
+        <tr>
+            <th>Fecha/Hora Salida</th><td>{{ pass.startDate ? pass.startDate|date('d/m/Y H:i') : '-' }}</td>
+            <th>Fecha/Hora Entrada</th><td>{{ pass.endDate ? pass.endDate|date('d/m/Y H:i') : '-' }}</td>
+        </tr>
+        <tr>
+            <th>Km Salida</th><td>{{ pass.departureMileage ?? '-' }}</td>
+            <th>Km Entrada</th><td>{{ pass.arrivalMileage ?? '-' }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <h3>Ruta</h3>
+    <table>
+        <tr><th>#</th><th>Estado</th><th>Ciudad</th><th>Comentario</th></tr>
+        {% for d in destinos %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ d.estado }}</td>
+                <td>{{ d.ciudad }}</td>
+                <td>{{ d.comentario ?? '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="4">Sin destinos.</td></tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div class="section">
+    <h3>Observaciones</h3>
+    <table>
+        <tr><th>Salida</th><td>{{ pass.comment_salida ?? '-' }}</td></tr>
+        <tr><th>Entrada</th><td>{{ pass.comment_entrada ?? '-' }}</td></tr>
+    </table>
+</div>
+
+<div class="section">
+    <h3>Evidencia Fotográfica</h3>
+    <div class="grid-3">
+        {% for ph in photos %}
+            <div class="photo">
+                {% if ph.path %}<img src="{{ ph.path }}" alt="{{ ph.label }}" />{% endif %}
+                <div style="font-size:10px; margin-top:4px;">{{ ph.label }}</div>
+            </div>
+        {% else %}
+            <div>Sin fotografías.</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="section">
+    <h3>Firmas</h3>
+    <div class="grid-2">
+        <div class="sign">
+            <div><strong>Conductor</strong></div>
+            {% if signatures.driver %}<img src="{{ signatures.driver }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+        </div>
+        <div class="sign">
+            <div><strong>Aprobador</strong></div>
+            {% if signatures.approver %}<img src="{{ signatures.approver }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="foot">
+    Generado por el sistema • {{ "now"|date('d/m/Y H:i') }}
+</div>
+</body>
+</html>

@@ -85,6 +85,30 @@ class InspectionController extends AbstractController
             ], 500);
         }
     }
+
+    #[Route('/api/inspections/{id}', name: 'api_inspection_delete', methods: ['DELETE'])]
+    public function delete(int $id, EntityManagerInterface $em): JsonResponse
+    {
+        $inspection = $em->getRepository(Inspection::class)->find($id);
+
+        if (!$inspection) {
+            return new JsonResponse(['success' => false, 'message' => 'Inspección no encontrada'], 404);
+        }
+
+        $photoUrl = $inspection->getPhotoUrl();
+        if ($photoUrl) {
+            $filePath = $this->getParameter('kernel.project_dir') . '/public' . $photoUrl;
+            if (file_exists($filePath)) {
+                unlink($filePath);
+            }
+        }
+
+        $em->remove($inspection);
+        $em->flush();
+
+        return new JsonResponse(['success' => true, 'message' => 'Inspección eliminada correctamente']);
+    }
+
     #[Route('/api/pass/{id}', name: 'api_pass_details', methods: ['GET'])]
     public function getDetails(int $id, EntityManagerInterface $em): JsonResponse
     {
@@ -118,7 +142,8 @@ class InspectionController extends AbstractController
             'success' => true,
             'pass' => [
                 'id' => $pass->getId(),
-                'mileage' => $pass->getMileage(),
+                'departureMileage' => $pass->getDepartureMileage(),
+                'arrivalMileage' => $pass->getArrivalMileage(),
                 'fuel' => $pass->getFuel(),
                 'startDate' => $pass->getStartDate() ? $pass->getStartDate()->format('Y-m-d H:i:s') : null,
                 'endDate' => $pass->getEndDate() ? $pass->getEndDate()->format('Y-m-d H:i:s') : null,

@@ -1,28 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog';
-import { VisuallyHidden } from './components/ui/visually-hidden';
-import { BottomSheetSelect, BottomSheetDatePicker } from './components/BottomSheet';
-import { CalendarPicker } from './components/CalendarPicker';
-import { Login } from './components/Login';
-import { AddDriverModal } from './components/AddDriverModal';
-import { AddVehicleModal } from './components/AddVehicleModal';
-import { AddDestinoModal } from './components/AddDestinoModal';
-import { DestinosList } from './components/DestinosList';
 import { DetalleFicha } from './components/DetalleFicha';
 import { FormularioEntrada } from './components/FormularioEntrada';
 import { FormularioSalida } from './components/FormularioSalida';
-import { RegistroEntrada } from './components/RegistroEntrada';
-import { ResumenEntrada } from './components/ResumenEntrada';
-import { EnvioCorreo } from './components/EnvioCorreo';
-import { toast } from "sonner@2.0.3";
-import { Plus, CheckCircle, Eye, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { toast } from "sonner";
+import { Plus, Eye, Trash2, ArrowLeft } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
 import { driversAPI, vehiclesAPI, comissionsAPI, placesAPI, passAPI } from './api';
+import { Login } from "./components/Login";
+import { AddDriverModal } from "./components/AddDriverModal";
+import { AddVehicleModal } from "./components/AddVehicleModal";
+import { AddDestinoModal } from "./components/AddDestinoModal";
+import { DestinosList } from "./components/DestinosList";
+import { BottomSheetSelect } from "./components/BottomSheet";
 
+// --- TYPE DEFINITIONS ---
 interface Destino {
     id: string;
     estado: string;
@@ -30,31 +26,20 @@ interface Destino {
     comentario: string;
 }
 
-interface FichaData {
-    folio: string;
-    conductorNombre: string;
-    conductorCargo: string;
-    vehiculo: string;
-    destinos: Destino[];
-}
-
-// --- INTERFACES ACTUALIZADAS ---
-
-// Definición de la estructura de la Inspección
 interface InspectionData {
     id: number;
-    type: 'photo' | 'signature' | 'text';
-    part: string; // 'front', 'general_comment_salida', 'entrada', etc.
+    type: 'photo' | 'signature';
+    part: string;
     comment: string | null;
     photo_url: string | null;
     signature_conductor_url: string | null;
     signature_approver_url: string | null;
 }
 
-// Estructura de los detalles del Pase (viene de GET /api/pass/{id})
 interface PassDetails {
     id: number;
-    mileage: number;
+    departureMileage: number | null;
+    arrivalMileage: number | null;
     fuel: string;
     comment_salida: string | null;
     comment_entrada: string | null;
@@ -62,50 +47,32 @@ interface PassDetails {
     endDate: string | null;
     status: string;
     comission_folio: string | null;
-    inspections: InspectionData[]; // Array de todas las inspecciones (fotos, firmas, comentarios)
+    inspections: InspectionData[];
 }
 
-// FichaGuardada, usando PassDetails
-interface FichaGuardada extends FichaData {
-    id: number; // ID de la Comission en BD
+interface FichaGuardada {
+    id: number;
     folio: string;
+    conductorNombre: string;
+    conductorCargo: string;
+    vehiculo?: string;
+    destinos: Destino[];
     fechaCreacion: string;
     estado: 'creada' | 'con-entrada' | 'con-salida' | 'completada';
-
-    // Datos mínimos del pase (solo para saber si existe y su ID)
-    salidaData?: {
-        pass_id?: number;
-        // Eliminamos los campos redundantes (fotos, firmas, km)
-        // ya que ahora se cargan vía passDetails
-    } & any;
-
-    entradaData?: {
-        // Eliminamos los campos redundantes
-    } & any;
-
-    // 🟢 ESTE CAMPO ALMACENARÁ TODA LA EVIDENCIA (fotos, firmas, comentarios)
+    salidaData?: { pass_id?: number } & any;
+    entradaData?: any;
     passDetails: PassDetails | null;
 }
 
-// Legacy interface for compatibility
-interface ComisionData {
-    folio: string;
-    destinos: Destino[];
-    fechaSalida: string;
-    horaSalida: string;
-    fechaEntrega: string;
-    horaEntrega: string;
-    conductor: string;
-    vehiculo: string;
-}
-
 interface Driver {
+    id: number;
     value: string;
     label: string;
     cargo?: string;
 }
 
 interface Vehicle {
+    id: number;
     value: string;
     label: string;
     marca?: string;
@@ -114,27 +81,32 @@ interface Vehicle {
     año?: string;
 }
 
-// API data will be loaded dynamically
-
-const INITIAL_DRIVERS: Driver[] = [
-    { value: 'nancy-godinez', label: 'Nancy Godínez', cargo: 'Chofer' },
-    { value: 'oscar-perez', label: 'Oscar Pérez', cargo: 'Técnico' },
-    { value: 'dulce-lopez', label: 'Dulce Jimena López', cargo: 'Supervisora' },
-    { value: 'bladimir-rivera', label: 'Bladimir Rivera', cargo: 'Operador' },
-    { value: 'omar-pillardo', label: 'Omar Pillardo', cargo: 'Chofer' }
-];
-
-const INITIAL_VEHICLES: Vehicle[] = [
-    { value: 'toyota-hilux', label: 'Toyota Hilux', marca: 'Toyota', modelo: 'Hilux', color: 'Blanco', año: '2023' },
-    { value: 'ford-f150', label: 'Ford F-150', marca: 'Ford', modelo: 'F-150', color: 'Azul', año: '2022' },
-    { value: 'nissan-sentra', label: 'Nissan Sentra', marca: 'Nissan', modelo: 'Sentra', color: 'Gris', año: '2024' },
-    { value: 'chevrolet-aveo', label: 'Chevrolet Aveo', marca: 'Chevrolet', modelo: 'Aveo', color: 'Rojo', año: '2021' }
-];
+// A simplified version for the form state
+interface FichaFormData {
+    folio: string;
+    conductorNombre: string;
+    conductorCargo: string;
+    vehiculo: string;
+    destinos: Destino[];
+}
 
 export default function App() {
-    const [currentScreen, setCurrentScreen] = useState<'login' | 'dashboard' | 'crear-ficha' | 'detalle-ficha' | 'formulario-entrada' | 'formulario-salida' | 'confirmacion' | 'registro-entrada' | 'resumen-entrada' | 'envio-correo'>('login');
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [fichaData, setFichaData] = useState<FichaData>({
+    const [currentScreen, setCurrentScreen] = useState<'login' | 'dashboard' | 'crear-ficha' | 'detalle-ficha' | 'formulario-entrada' | 'formulario-salida'>('login');
+    const [fichasGuardadas, setFichasGuardadas] = useState<FichaGuardada[]>([]);
+    const [selectedFicha, setSelectedFicha] = useState<FichaGuardada | null>(null);
+    const [drivers, setDrivers] = useState<Driver[]>([]);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [estados, setEstados] = useState<{ value: string, label: string, codigo?: string }[]>([]);
+    const [ciudades, setCiudades] = useState<{ [key: string]: { value: string, label: string }[] }>({});
+    const [loadingCiudades, setLoadingCiudades] = useState<{ [key: string]: boolean }>({});
+    const [isAddDriverModalOpen, setIsAddDriverModalOpen] = useState(false);
+    const [isAddVehicleModalOpen, setIsAddVehicleModalOpen] = useState(false);
+    const [isAddDestinoModalOpen, setIsAddDestinoModalOpen] = useState(false);
+    const [editingDestino, setEditingDestino] = useState<Destino | null>(null);
+    const [showValidationErrors, setShowValidationErrors] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [fichaToDelete, setFichaToDelete] = useState<string | null>(null);
+    const [fichaData, setFichaData] = useState<FichaFormData>({
         folio: '',
         conductorNombre: '',
         conductorCargo: '',
@@ -142,80 +114,50 @@ export default function App() {
         destinos: []
     });
 
-    // Estado para fichas guardadas
-    const [fichasGuardadas, setFichasGuardadas] = useState<FichaGuardada[]>([]);
-    const [selectedFicha, setSelectedFicha] = useState<FichaGuardada | null>(null);
+    const generateFolio = () => {
+        const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
+        const number = currentCounter.toString().padStart(4, '0');
+        localStorage.setItem('folioCounter', (currentCounter + 1).toString());
+        return `PV-${number}`;
+    };
 
-    // Estado para datos de entrada temporal
-    const [tempEntradaData, setTempEntradaData] = useState<any>(null);
+    const refreshFichas = useCallback(async () => {
+        try {
+            const fichasResponse = await comissionsAPI.list();
+            const freshFichas = Array.isArray(fichasResponse.data) ? fichasResponse.data as FichaGuardada[] : [];
+            setFichasGuardadas(freshFichas);
 
-    // Estado legacy para compatibilidad
-    const [formData, setFormData] = useState<ComisionData>({
-        folio: '',
-        destinos: [],
-        fechaSalida: '',
-        horaSalida: '',
-        fechaEntrega: '',
-        horaEntrega: '',
-        conductor: '',
-        vehiculo: ''
-    });
-    const [comisionesGuardadas, setComisionesGuardadas] = useState<any[]>([]);
-    const [selectedComision, setSelectedComision] = useState<any>(null);
+            if (selectedFicha) {
+                const updatedSelected = freshFichas.find(f => f.folio === selectedFicha.folio);
+                setSelectedFicha(updatedSelected || null);
+            }
+            toast.success('Datos actualizados');
+        } catch (error) {
+            console.error('❌ Error al recargar las fichas:', error);
+            toast.error('No se pudieron actualizar los datos');
+        }
+    }, [selectedFicha]);
 
-    // Estados y ciudades de la API de Copomex
-    const [estados, setEstados] = useState<{value: string, label: string, codigo?: string}[]>([]);
-    const [ciudades, setCiudades] = useState<{[key: string]: {value: string, label: string}[]}>({});
-    const [loadingEstados, setLoadingEstados] = useState(false);
-    const [loadingCiudades, setLoadingCiudades] = useState<{[key: string]: boolean}>({});
-
-    const [drivers, setDrivers] = useState<Driver[]>([]);
-    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-    const [isAddDriverModalOpen, setIsAddDriverModalOpen] = useState(false);
-    const [isAddVehicleModalOpen, setIsAddVehicleModalOpen] = useState(false);
-    const [isAddDestinoModalOpen, setIsAddDestinoModalOpen] = useState(false);
-    const [editingDestino, setEditingDestino] = useState<Destino | null>(null);
-    const [dateError, setDateError] = useState<string>('');
-    const [showValidationErrors, setShowValidationErrors] = useState(false);
-    const [showDetailsModal, setShowDetailsModal] = useState(false);
-    const [showPhotosModal, setShowPhotosModal] = useState(false);
-    const [showSignatureModal, setShowSignatureModal] = useState(false);
-    const [selectedSignatureType, setSelectedSignatureType] = useState<'conductor' | 'aprobador' | null>(null);
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [tempCargoInput, setTempCargoInput] = useState('');
-
-    // Cargar datos iniciales desde la BD al montar la app
     useEffect(() => {
         const loadInitialData = async () => {
             try {
-                console.log('🔄 Cargando datos iniciales desde la BD...');
+                const [driversResponse, vehiclesResponse, fichasResponse] = await Promise.all([
+                    driversAPI.list(),
+                    vehiclesAPI.list(),
+                    comissionsAPI.list()
+                ]);
 
-                // Cargar drivers
-                const driversResponse = await driversAPI.list();
-                const driversData = driversResponse.data.map((d: any) => ({
-                    value: d.name.toLowerCase().replace(/\s+/g, '-'),
-                    label: d.name,
-                    cargo: d.position,
-                    id: d.id
-                }));
-                setDrivers(driversData);
+                if (Array.isArray(driversResponse.data)) {
+                    setDrivers(driversResponse.data.map((d: any) => ({ value: d.name.toLowerCase().replace(/\s+/g, '-'), label: d.name, cargo: d.position, id: d.id })));
+                } else { setDrivers([]); }
 
-                // Cargar vehicles
-                const vehiclesResponse = await vehiclesAPI.list();
-                const vehiclesData = vehiclesResponse.data.map((v: any) => ({
-                    value: `${v.brand}-${v.model}`.toLowerCase().replace(/\s+/g, '-'),
-                    label: `${v.brand} ${v.model}`,
-                    marca: v.brand,
-                    modelo: v.model,
-                    color: v.color,
-                    año: v.year?.toString(),
-                    id: v.id
-                }));
-                setVehicles(vehiclesData);
+                if (Array.isArray(vehiclesResponse.data)) {
+                    setVehicles(vehiclesResponse.data.map((v: any) => ({ value: `${v.brand}-${v.model}`.toLowerCase().replace(/\s+/g, '-'), label: `${v.brand} ${v.model}`, marca: v.brand, modelo: v.model, color: v.color, año: v.year?.toString(), id: v.id })));
+                } else { setVehicles([]); }
 
-                // Cargar fichas guardadas
-                const fichasResponse = await comissionsAPI.list();
-                setFichasGuardadas(fichasResponse.data as FichaGuardada[]);
+                if (Array.isArray(fichasResponse.data)) {
+                    setFichasGuardadas(fichasResponse.data as FichaGuardada[]);
+                }
 
                 toast.success('Datos cargados desde la base de datos');
             } catch (error) {
@@ -223,68 +165,8 @@ export default function App() {
                 toast.error('Error al cargar datos iniciales desde la BD');
             }
         };
-
         loadInitialData();
 
-        const generateFolio = () => {
-            const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
-            const number = currentCounter.toString().padStart(4, '0');
-            localStorage.setItem('folioCounter', (currentCounter + 1).toString());
-            return `PV-${number}`;
-        };
-
-        setFichaData(prev => ({
-            ...prev,
-            folio: generateFolio()
-        }));
-    }, []);
-
-    // Cargar detalles del pase (evidencias) al ver una ficha
-    useEffect(() => {
-        const fetchPassDetails = async () => {
-            if (currentScreen !== 'detalle-ficha' || !selectedFicha) {
-                return;
-            }
-
-            const passId = selectedFicha.salidaData?.pass_id;
-
-            // No hacer nada si no hay passId o si los detalles ya están cargados
-            if (!passId || selectedFicha.passDetails) {
-                return;
-            }
-
-            try {
-                toast.info('Cargando evidencias de la ficha...');
-                const response = await passAPI.getDetails(passId);
-
-                if (response.data.success) {
-                    const passDetails = response.data.pass;
-
-                    // Actualizar la ficha en el estado global y en la ficha seleccionada
-                    const updatedFichas = fichasGuardadas.map(f =>
-                        f.folio === selectedFicha.folio
-                            ? { ...f, passDetails }
-                            : f
-                    );
-                    setFichasGuardadas(updatedFichas);
-                    setSelectedFicha(prev => (prev ? { ...prev, passDetails } : null));
-
-                    toast.success('Evidencias cargadas correctamente.');
-                } else {
-                    throw new Error(response.data.message || 'Respuesta no exitosa de la API');
-                }
-            } catch (error) {
-                console.error('❌ Error al cargar los detalles del pase:', error);
-                toast.error('No se pudieron cargar las evidencias (fotos, firmas).');
-            }
-        };
-
-        fetchPassDetails();
-    }, [currentScreen, selectedFicha]);
-
-
-    // Estados completos de México con códigos numéricos para la API
-    useEffect(() => {
         // Estados mexicanos con sus códigos numéricos oficiales
         const estadosCompletos = [
             { value: 'aguascalientes', label: 'Aguascalientes', codigo: '01' },
@@ -320,68 +202,207 @@ export default function App() {
             { value: 'yucatan', label: 'Yucatán', codigo: '31' },
             { value: 'zacatecas', label: 'Zacatecas', codigo: '32' }
         ];
-
         setEstados(estadosCompletos);
+
+        setFichaData(prev => ({
+            ...prev,
+            folio: generateFolio()
+        }));
     }, []);
 
-    // Función helper para guardar fichas en localStorage con manejo de QuotaExceeded
-    const saveFichasToLocalStorage = (fichas: FichaGuardada[]) => {
-        const MAX_FICHAS = 10; // Límite de fichas para evitar exceder quota
+    const handleLogin = () => setCurrentScreen('dashboard');
+    const handleBackToDashboard = () => setCurrentScreen('dashboard');
 
+    const handleCreateNewFicha = () => {
+        setSelectedFicha(null);
+        setFichaData({ folio: generateFolio(), conductorNombre: '', conductorCargo: '', vehiculo: '', destinos: [] });
+        setShowValidationErrors(false);
+        setCurrentScreen('crear-ficha');
+    };
+
+    const handleSelectFicha = (ficha: FichaGuardada) => {
+        setSelectedFicha(ficha);
+        setCurrentScreen('detalle-ficha');
+    };
+
+    const handleGoToSalida = () => setCurrentScreen('formulario-salida');
+    const handleGoToEntrada = () => setCurrentScreen('formulario-entrada');
+    const handleEditSalida = () => setCurrentScreen('formulario-salida');
+    const handleEditEntrada = () => setCurrentScreen('formulario-entrada');
+
+    const handleSalidaComplete = async (salidaData: any) => {
+        if (!selectedFicha) return toast.error("No hay una ficha seleccionada.");
         try {
-            // Ordenar por fecha de creación (más recientes primero)
-            const fichasOrdenadas = [...fichas].sort((a, b) =>
-                new Date(b.fechaCreacion).getTime() - new Date(a.fechaCreacion).getTime()
-            );
-
-            // Limitar a las últimas MAX_FICHAS
-            const fichasLimitadas = fichasOrdenadas.slice(0, MAX_FICHAS);
-
-            // Intentar guardar
-            localStorage.setItem('fichasGuardadas', JSON.stringify(fichasLimitadas));
-
-            // Si tuvimos que eliminar fichas antiguas, notificar
-            if (fichasOrdenadas.length > MAX_FICHAS) {
-                const eliminadas = fichasOrdenadas.length - MAX_FICHAS;
-                toast.info(`Se eliminaron ${eliminadas} ficha(s) antigua(s) para liberar espacio`);
-            }
-
-            return fichasLimitadas;
+            const isEditing = !!selectedFicha.passDetails?.id;
+            const payload = {
+                pass_id: isEditing ? selectedFicha.passDetails!.id : undefined,
+                comission_id: selectedFicha.folio,
+                mileage: parseInt(salidaData.kmSalida?.replace(/,/g, '') || '0'),
+                fuel: salidaData.combustible?.toString() || '8',
+                departure_comment: salidaData.departure_comment || '',
+                start_date: new Date().toISOString(),
+                signature_conductor: salidaData.firmaConductor || null,
+                signature_approver: salidaData.firmaAprobador || null,
+                inspections: Object.entries(salidaData.fotos || {}).map(([part, photo]) => photo ? { type: 'photo', part, photo } : null).filter(Boolean),
+            };
+            await passAPI.salida(payload);
+            toast.success(`Salida ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
+            await refreshFichas();
+            setCurrentScreen('detalle-ficha');
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                // Si aún así excedemos la quota, intentar con menos fichas
-                console.warn('QuotaExceededError: Reduciendo número de fichas...');
-
-                const fichasReducidas = fichas.slice(0, Math.max(1, Math.floor(MAX_FICHAS / 2)));
-                try {
-                    localStorage.setItem('fichasGuardadas', JSON.stringify(fichasReducidas));
-                    toast.warning(`Espacio insuficiente. Se guardaron solo las ${fichasReducidas.length} fichas más recientes`);
-                    return fichasReducidas;
-                } catch (secondError) {
-                    console.error('Error crítico al guardar fichas:', secondError);
-                    toast.error('No hay espacio suficiente. Por favor elimina fichas antiguas');
-                    return fichas; // Retornar las fichas sin guardar
-                }
-            } else {
-                console.error('Error saving fichas:', error);
-                toast.error('Error al guardar la ficha');
-                return fichas;
-            }
+            console.error('Error al guardar la salida:', error);
+            toast.error('Error al guardar la salida');
         }
     };
 
-    const updateFichaData = (field: keyof FichaData, value: string | Destino[]) => {
-        setFichaData(prev => ({ ...prev, [field]: value }));
-
-        // Clear validation errors when user starts filling fields
-        if (showValidationErrors && value) {
-            setShowValidationErrors(false);
+    const handleEntradaComplete = async (entradaData: any) => {
+        const passId = selectedFicha?.passDetails?.id;
+        if (!passId) return toast.error("Falta el ID del Pase para registrar la entrada.");
+        try {
+            const isEditing = !!selectedFicha.passDetails?.endDate && new Date(selectedFicha.passDetails.endDate).getFullYear() > 1970;
+            const payload = {
+                pass_id: passId,
+                end_date: new Date().toISOString(),
+                mileage: parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0'),
+                fuel: entradaData.combustible?.toString() || '8',
+                arrival_comment: entradaData.arrival_comment || '',
+                signature_conductor: entradaData.firmaConductor || null,
+                signature_approver: entradaData.firmaAprobador || null,
+                inspections: Object.entries(entradaData.fotos || {}).map(([part, photo]) => photo ? { type: 'photo', part: `${part}_entry`, photo } : null).filter(Boolean),
+            };
+            await passAPI.entrada(payload);
+            toast.success(`Entrada ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
+            await refreshFichas();
+            setCurrentScreen('detalle-ficha');
+        } catch (error) {
+            console.error('Error al guardar la entrada:', error);
+            toast.error('Error al guardar la entrada');
         }
+    };
+
+    const handleOpenDeleteModal = (folio: string) => {
+        setFichaToDelete(folio);
+        setShowDeleteModal(true);
+    };
+
+    const handleDeleteFicha = async () => {
+        if (!fichaToDelete) return;
+        try {
+            await comissionsAPI.delete(fichaToDelete);
+            setFichasGuardadas(prevFichas => prevFichas.filter(f => f.folio !== fichaToDelete));
+            toast.success(`Ficha ${fichaToDelete} eliminada`);
+        } catch (error) {
+            console.error('Error al eliminar la ficha:', error);
+            toast.error('Error al eliminar la ficha');
+        } finally {
+            setShowDeleteModal(false);
+            setFichaToDelete(null);
+        }
+    };
+
+    const validateFichaForm = () => {
+        const hasNombre = fichaData.conductorNombre.trim() !== '';
+        const hasCargo = fichaData.conductorCargo.trim() !== '';
+        const hasVehiculo = fichaData.vehiculo.trim() !== '';
+        const hasDestinos = fichaData.destinos.length > 0;
+        return hasNombre && hasCargo && hasVehiculo && hasDestinos;
+    };
+
+    const handleSaveFicha = async () => {
+        if (!validateFichaForm()) {
+            setShowValidationErrors(true);
+            toast.error('Por favor completa todos los campos obligatorios');
+            return;
+        }
+
+        try {
+            const driver = drivers.find(d => d.label === fichaData.conductorNombre);
+            const vehicle = vehicles.find(v => v.value === fichaData.vehiculo);
+
+            if (!driver?.id || !vehicle?.id) {
+                toast.error('Error: conductor o vehículo no encontrado. Verifica que se hayan cargado desde la BD');
+                return;
+            }
+
+            const userIdString = localStorage.getItem("user_id");
+            if (!userIdString) {
+                toast.error("Error: No se pudo identificar al usuario. Por favor, inicie sesión de nuevo.");
+                return;
+            }
+            const userId = parseInt(userIdString, 10);
+
+            const comissionResponse = await comissionsAPI.create({
+                driver_id: driver.id,
+                vehicle_id: vehicle.id,
+                user_id: userId,
+                city: fichaData.destinos[0]?.ciudad || 'Por definir',
+                state: fichaData.destinos[0]?.estado || 'Por definir',
+                description: fichaData.destinos.map(d => `${d.estado}, ${d.ciudad}`).join(' | ')
+            });
+
+            if (comissionResponse.data.success) {
+                const comissionId = comissionResponse.data.comission.id;
+
+                for (const destino of fichaData.destinos) {
+                    await placesAPI.create({
+                        comission_id: comissionId,
+                        city: destino.ciudad,
+                        state: destino.estado,
+                        comment: destino.comentario
+                    });
+                }
+
+                const nuevaFicha: FichaGuardada = {
+                    ...fichaData,
+                    id: comissionId,
+                    folio: comissionResponse.data.comission.folio.toString(),
+                    fechaCreacion: comissionResponse.data.comission.created_at,
+                    estado: 'creada',
+                    passDetails: { // Initialize passDetails as a complete object
+                        id: 0, // Default ID, will be updated when salida is registered
+                        departureMileage: null,
+                        arrivalMileage: null,
+                        fuel: '8',
+                        comment_salida: null,
+                        comment_entrada: null,
+                        startDate: null,
+                        endDate: null,
+                        status: '1',
+                        comission_folio: comissionResponse.data.comission.folio.toString(),
+                        inspections: []
+                    }
+                };
+
+                setFichasGuardadas(prev => [...prev, nuevaFicha]);
+                setSelectedFicha(nuevaFicha);
+                toast.success('Ficha guardada en la base de datos');
+                setCurrentScreen('detalle-ficha');
+            }
+        } catch (error) {
+            console.error('Error al guardar ficha:', error);
+            toast.error('Error al guardar la ficha');
+        }
+    };
+
+    const getSelectedVehicleName = (vehicleValue?: string) => {
+        const value = vehicleValue || fichaData.vehiculo;
+        const vehicle = vehicles.find(v => v.value === value);
+        return vehicle ? vehicle.label : value;
+    };
+
+    const getEstadoLabel = (value: string) => {
+        const estado = estados.find(e => e.value === value);
+        return estado ? estado.label : value;
+    };
+
+    const getCiudadLabel = (estadoValue: string, ciudadValue: string) => {
+        const ciudadOptions = ciudades[estadoValue] || [];
+        const ciudad = ciudadOptions.find(c => c.value === ciudadValue);
+        return ciudad ? ciudad.label : ciudadValue;
     };
 
     const handleDriverAdded = (newDriver: Driver) => {
         setDrivers(prev => [...prev, newDriver]);
-        // Actualizar nombre y cargo del conductor en la ficha
         setFichaData(prev => ({
             ...prev,
             conductorNombre: newDriver.label,
@@ -392,7 +413,6 @@ export default function App() {
 
     const handleVehicleAdded = (newVehicle: Vehicle) => {
         setVehicles(prev => [...prev, newVehicle]);
-        // Seleccionar automáticamente el vehículo recién creado
         setFichaData(prev => ({
             ...prev,
             vehiculo: newVehicle.value
@@ -400,21 +420,14 @@ export default function App() {
         toast.success('Vehículo agregado correctamente');
     };
 
-    const handleLogin = () => {
-        setIsLoggedIn(true);
-        setCurrentScreen('dashboard');
-    };
-
     const handleDestinoAdded = (destino: Destino) => {
         if (editingDestino) {
-            // Update existing destino
             setFichaData(prev => ({
                 ...prev,
                 destinos: prev.destinos.map(d => d.id === destino.id ? destino : d)
             }));
             setEditingDestino(null);
         } else {
-            // Add new destino
             setFichaData(prev => ({
                 ...prev,
                 destinos: [...prev.destinos, destino]
@@ -440,253 +453,20 @@ export default function App() {
         setIsAddDestinoModalOpen(true);
     };
 
-    const validateFichaForm = () => {
-        const hasNombre = fichaData.conductorNombre.trim() !== '';
-        const hasCargo = fichaData.conductorCargo.trim() !== '';
-        const hasVehiculo = fichaData.vehiculo.trim() !== '';
-        const hasDestinos = fichaData.destinos.length > 0;
-
-        return hasNombre && hasCargo && hasVehiculo && hasDestinos;
-    };
-
-    const handleSaveFicha = async () => {
-        if (!validateFichaForm()) {
-            setShowValidationErrors(true);
-            toast.error('Por favor completa todos los campos obligatorios');
-            return;
-        }
-
-        try {
-            console.log('🔍 Datos de ficha:', fichaData);
-            console.log('🔍 Drivers disponibles:', drivers);
-            console.log('🔍 Vehicles disponibles:', vehicles);
-
-            // Buscar IDs del conductor y vehículo
-            const driver = drivers.find(d => d.label === fichaData.conductorNombre);
-            const vehicle = vehicles.find(v => v.value === fichaData.vehiculo);
-
-            console.log('🔍 Driver encontrado:', driver);
-            console.log('🔍 Vehicle encontrado:', vehicle);
-
-            if (!driver?.id || !vehicle?.id) {
-                console.error('❌ Driver o vehicle sin ID');
-                toast.error('Error: conductor o vehículo no encontrado. Verifica que se hayan cargado desde la BD');
-                return;
-            }
-
-            // Obtener user_id del localStorage (asumiendo que se guardó en el login)
-            const userId = 1; // TODO: Obtener del contexto de usuario logueado
-
-            // Crear comisión en la BD
-            const comissionResponse = await comissionsAPI.create({
-                driver_id: driver.id,
-                vehicle_id: vehicle.id,
-                user_id: userId,
-                city: fichaData.destinos[0]?.ciudad || 'Por definir',
-                state: fichaData.destinos[0]?.estado || 'Por definir',
-                description: fichaData.destinos.map(d => `${d.estado}, ${d.ciudad}`).join(' | ')
-            });
-
-            if (comissionResponse.data.success) {
-                const comissionId = comissionResponse.data.comission.id;
-
-                // Guardar destinos en la BD
-                for (const destino of fichaData.destinos) {
-                    await placesAPI.create({
-                        comission_id: comissionId,
-                        city: destino.ciudad,
-                        state: destino.estado,
-                        comment: destino.comentario
-                    });
-                }
-
-                // Crear ficha local para mantener compatibilidad con la UI
-                const nuevaFicha: FichaGuardada = {
-                    ...fichaData,
-                    id: comissionId,
-                    folio: comissionResponse.data.comission.folio.toString(),
-                    fechaCreacion: comissionResponse.data.comission.created_at,
-                    estado: 'creada',
-                    passDetails: null
-                };
-
-                const fichasActualizadas = [...fichasGuardadas, nuevaFicha];
-                setFichasGuardadas(fichasActualizadas);
-
-                // Seleccionar la nueva ficha y navegar a detalles
-                setSelectedFicha(nuevaFicha);
-                toast.success('Ficha guardada en la base de datos');
-                setCurrentScreen('detalle-ficha');
-            }
-        } catch (error) {
-            console.error('Error al guardar ficha:', error);
-            toast.error('Error al guardar la ficha');
-        }
-    };
-
-    const handleGoToEntrada = () => {
-        setCurrentScreen('formulario-entrada');
-    };
-
-    const handleGoToSalida = () => {
-        setCurrentScreen('formulario-salida');
-    };
-
-    const handleSalidaComplete = async (salidaData: any) => {
-        if (!selectedFicha || !selectedFicha.folio) {
-            console.error('Error: selectedFicha no está definida o le falta el folio.');
-            toast.error("Error", { description: "No se pudo obtener el Folio de la Ficha para el registro de Salida." });
-            return;
-        }
-
-        try {
-            const comissionFolio = selectedFicha.folio.replace('PV-', '');
-
-            const payload = {
-                comission_id: comissionFolio,
-                mileage: parseInt(salidaData.kmSalida?.replace(/,/g, '') || '0'),
-                fuel: salidaData.combustible?.toString() || '8',
-                departure_comment: salidaData.departure_comment || '',
-                start_date: new Date().toISOString(),
-                signature_conductor: salidaData.firmaConductor || null,
-                signature_approver: salidaData.firmaAprobador || null,
-                inspections: [
-                    salidaData.fotos?.fotoKilometraje ? {
-                        type: 'photo',
-                        part: 'mileage',
-                        photo: salidaData.fotos.fotoKilometraje,
-                        comment: salidaData.kmComentario
-                    } : null,
-                    salidaData.fotos?.fotoFrontal ? { type: 'photo', part: 'front', photo: salidaData.fotos.fotoFrontal } : null,
-                    salidaData.fotos?.fotoLatDer ? { type: 'photo', part: 'right_side', photo: salidaData.fotos.fotoLatDer } : null,
-                    salidaData.fotos?.fotoLatIzq ? { type: 'photo', part: 'left_side', photo: salidaData.fotos.fotoLatIzq } : null,
-                    salidaData.fotos?.fotoPosterior ? { type: 'photo', part: 'back', photo: salidaData.fotos.fotoPosterior } : null,
-                    ...(salidaData.fotosInteriores || []).map((interior: any) => interior.foto ? {
-                        type: 'photo',
-                        part: 'interior',
-                        photo: interior.foto,
-                        comment: interior.tipo,
-                    } : null),
-                ].filter(Boolean),
-            };
-
-            const response = await passAPI.salida(payload);
-            const passId = response.data.pass_id;
-
-            if (!passId) {
-                throw new Error("El servidor no devolvió el ID del Pase creado.");
-            }
-
-            const newSalidaData = { ...salidaData, pass_id: passId };
-
-            const fichasActualizadas = fichasGuardadas.map(ficha => {
-                if (ficha.folio === selectedFicha.folio) {
-                    const nuevoEstado = ficha.entradaData ? 'completada' : 'con-salida';
-                    return { ...ficha, estado: nuevoEstado as const, salidaData: newSalidaData };
-                }
-                return ficha;
-            });
-
-            setFichasGuardadas(fichasActualizadas);
-
-            const fichaActualizada = fichasActualizadas.find(f => f.folio === selectedFicha.folio);
-            if (fichaActualizada) {
-                setSelectedFicha(fichaActualizada);
-            }
-
-            toast.success('Salida registrada en la base de datos');
-            setCurrentScreen('detalle-ficha');
-        } catch (error) {
-            console.error('Error al registrar salida:', error);
-            toast.error('Error al registrar la salida');
-        }
-    };
-
-    const handleEntradaComplete = async (entradaData: any) => {
-        const passId = selectedFicha?.salidaData?.pass_id;
-
-        if (!passId) {
-            console.error('Error: El ID del Pase (pass_id) no se encontró en la ficha seleccionada.');
-            toast.error("Error", { description: "Falta el ID del Pase (Pass) para registrar la entrada." });
-            return;
-        }
-
-        try {
-            const payload = {
-                pass_id: passId,
-                end_date: new Date().toISOString(),
-                mileage: parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0'),
-                fuel: entradaData.combustible?.toString() || '8',
-                arrival_comment: entradaData.arrival_comment || '',
-                signature_conductor: entradaData.firmaConductor || null,
-                signature_approver: entradaData.firmaAprobador || null,
-                inspections: [
-                    entradaData.fotos?.fotoKilometraje ? {
-                        type: 'photo',
-                        part: 'mileage_entry',
-                        photo: entradaData.fotos.fotoKilometraje,
-                        comment: entradaData.kmComentario
-                    } : null,
-                    entradaData.fotos?.fotoFrontal ? { type: 'photo', part: 'front_entry', photo: entradaData.fotos.fotoFrontal } : null,
-                    entradaData.fotos?.fotoLatDer ? { type: 'photo', part: 'right_side_entry', photo: entradaData.fotos.fotoLatDer } : null,
-                    entradaData.fotos?.fotoLatIzq ? { type: 'photo', part: 'left_side_entry', photo: entradaData.fotos.fotoLatIzq } : null,
-                    entradaData.fotos?.fotoPosterior ? { type: 'photo', part: 'back_entry', photo: entradaData.fotos.fotoPosterior } : null,
-                    ...(entradaData.fotosInteriores || []).map((interior: any) => interior.foto ? {
-                        type: 'photo',
-                        part: 'interior_entry',
-                        photo: interior.foto,
-                        comment: interior.tipo,
-                    } : null),
-                ].filter(Boolean),
-            };
-
-            await passAPI.entrada(payload);
-
-            const fichasActualizadas = fichasGuardadas.map(ficha => {
-                if (ficha.folio === selectedFicha.folio) {
-                    const nuevoEstado = 'completada';
-                    return { ...ficha, estado: nuevoEstado as const, entradaData };
-                }
-                return ficha;
-            });
-
-            setFichasGuardadas(fichasActualizadas);
-
-            const fichaActualizada = fichasActualizadas.find(f => f.folio === selectedFicha.folio);
-            if (fichaActualizada) {
-                setSelectedFicha(fichaActualizada);
-            }
-
-            toast.success('Entrada registrada en la base de datos');
-            setCurrentScreen('detalle-ficha');
-        } catch (error) {
-            console.error('Error al registrar entrada:', error);
-            toast.error('Error al registrar la entrada');
-        }
-    };
-
-    // Load ciudades for a specific estado using exact Copomex API
     const loadCiudadesForEstado = async (estadoValue: string, estadoLabel: string) => {
         if (!estadoValue || ciudades[estadoValue]) return;
 
         setLoadingCiudades(prev => ({ ...prev, [estadoValue]: true }));
 
         try {
-            // Encontrar el código del estado
             const estado = estados.find(e => e.value === estadoValue);
             const estadoCodigo = estado?.codigo;
 
             if (!estadoCodigo) {
-                console.error(`❌ Código de estado no encontrado para: ${estadoValue}`);
                 throw new Error(`Código de estado no encontrado para ${estadoValue}`);
             }
 
-            console.log(`🚀 Cargando ciudades para: ${estadoLabel} (código: ${estadoCodigo})`);
-
-            // Usar la API exacta proporcionada por el usuario
             const apiUrl = `https://api.copomex.com/query/getCitiesByStateCode/${estadoCodigo}?token=pruebas`;
-            console.log(`📡 URL de API: ${apiUrl}`);
-
             const response = await fetch(apiUrl);
 
             if (!response.ok) {
@@ -694,95 +474,52 @@ export default function App() {
             }
 
             const data = await response.json();
-            console.log(`📦 Respuesta completa de la API:`, data);
 
-            // Verificar diferentes estructuras posibles de respuesta
             let ciudadesList = [];
-
             if (data.response && data.response.ciudades && Array.isArray(data.response.ciudades)) {
-                console.log(`✅ Estructura encontrada: data.response.ciudades (${data.response.ciudades.length} códigos)`);
-
-                // Verificar si son códigos hash (contienen caracteres aleatorios)
                 const firstItem = data.response.ciudades[0];
                 const isHashCode = typeof firstItem === 'string' &&
                     (firstItem.length < 25 && /^[A-Za-z0-9]+$/.test(firstItem) &&
                         !/^[A-Za-z\s]+$/.test(firstItem));
 
-                if (isHashCode) {
-                    console.log(`🔄 API devuelve códigos hash, usando fallback data para ${estadoLabel}`);
-                    // No lanzar error, usar directamente fallback
-                } else {
-                    // Si no son códigos hash, procesarlos como nombres de ciudades
+                if (!isHashCode) {
                     ciudadesList = data.response.ciudades.map(codigo => ({ city: codigo }));
                 }
             } else if (data.response && data.response.cities && Array.isArray(data.response.cities)) {
-                console.log(`✅ Estructura encontrada: data.response.cities (${data.response.cities.length} ciudades)`);
                 ciudadesList = data.response.cities;
-            } else if (data.cities && Array.isArray(data.cities)) {
-                console.log(`✅ Estructura encontrada: data.cities (${data.cities.length} ciudades)`);
-                ciudadesList = data.cities;
             } else if (Array.isArray(data)) {
-                console.log(`✅ Estructura encontrada: data directa (${data.length} ciudades)`);
                 ciudadesList = data;
-            } else {
-                console.error(`❌ Estructura de respuesta no reconocida:`, data);
-                throw new Error('Estructura de respuesta de API no válida');
             }
 
-            // Procesar ciudades solo si tenemos datos válidos
             if (ciudadesList.length > 0) {
                 const ciudadesFormatted = ciudadesList.map((ciudad: any) => {
-                    // Manejar diferentes formatos de ciudad en la respuesta
                     const cityName = ciudad.city || ciudad.name || ciudad.municipio || ciudad;
-
-                    if (typeof cityName !== 'string') {
-                        console.warn(`⚠️ Formato de ciudad no válido:`, ciudad);
-                        return null;
-                    }
-
+                    if (typeof cityName !== 'string') return null;
                     return {
-                        value: cityName.toLowerCase()
-                            .replace(/\s+/g, '-')
-                            .replace(/[áàäâ]/g, 'a')
-                            .replace(/[éèëê]/g, 'e')
-                            .replace(/[íìïî]/g, 'i')
-                            .replace(/[óòöô]/g, 'o')
-                            .replace(/[úùüû]/g, 'u')
-                            .replace(/ñ/g, 'n')
-                            .replace(/[^a-z0-9-]/g, ''),
+                        value: cityName.toLowerCase().replace(/\s+/g, '-').replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i').replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n').replace(/[^a-z0-9-]/g, ''),
                         label: cityName
                     };
-                }).filter(Boolean); // Remover entradas null
+                }).filter(Boolean);
 
-                // Remover duplicados y ordenar
                 const ciudadesUnicas = ciudadesFormatted.filter((ciudad, index, self) =>
                     index === self.findIndex(c => c.value === ciudad.value)
                 );
 
                 if (ciudadesUnicas.length > 0) {
-                    console.log(`🎯 Ciudades procesadas para ${estadoLabel}: ${ciudadesUnicas.length}`);
-                    console.log(`🏙️ Primeras ciudades:`, ciudadesUnicas.slice(0, 5).map(c => c.label));
-
                     setCiudades(prev => ({
                         ...prev,
                         [estadoValue]: ciudadesUnicas.sort((a, b) => a.label.localeCompare(b.label))
                     }));
-
-                    return; // Salir exitosamente si procesamos ciudades reales
+                    return;
                 }
             }
-
-            // Si llegamos aquí, usar fallback data sin mostrar errores
-            console.log(`🔄 Usando fallback data para ${estadoLabel}`);
             throw new Error('Using fallback data');
 
         } catch (error) {
-            // Solo loggear errores reales, no cuando usamos fallback intencionalmente
             if (error.message !== 'Using fallback data') {
                 console.error(`❌ Error loading ciudades for ${estadoLabel}:`, error);
             }
 
-            // Fallback data completo para todos los estados mexicanos
             const fallbackCiudades: {[key: string]: {value: string, label: string}[]} = {
                 'aguascalientes': [
                     { value: 'aguascalientes', label: 'Aguascalientes' },
@@ -1023,8 +760,6 @@ export default function App() {
                 { value: 'principal', label: 'Municipio Principal' }
             ];
 
-            console.log(`🔄 Usando fallback data para ${estadoLabel}: ${fallback.length} ciudades`);
-
             setCiudades(prev => ({
                 ...prev,
                 [estadoValue]: fallback
@@ -1032,11 +767,6 @@ export default function App() {
         } finally {
             setLoadingCiudades(prev => ({ ...prev, [estadoValue]: false }));
         }
-    };
-
-    const getCiudadOptions = (estadoValue: string) => {
-        if (!estadoValue) return [];
-        return ciudades[estadoValue] || [];
     };
 
     const handleConductorChange = (conductorValue: string) => {
@@ -1050,282 +780,26 @@ export default function App() {
         }
     };
 
-    const getEstadoLabel = (value: string) => {
-        const estado = estados.find(e => e.value === value);
-        return estado ? estado.label : value;
+    const updateFichaData = (field: keyof FichaFormData, value: string | Destino[]) => {
+        setFichaData(prev => ({ ...prev, [field]: value }));
     };
 
-    const getCiudadLabel = (estadoValue: string, ciudadValue: string) => {
-        const ciudadOptions = getCiudadOptions(estadoValue);
-        const ciudad = ciudadOptions.find(c => c.value === ciudadValue);
-        return ciudad ? ciudad.label : ciudadValue;
+    const getDestinosText = (destinos: Destino[]) => {
+        if (destinos.length === 0) return 'Sin destinos';
+        return destinos.map(d => `${getEstadoLabel(d.estado)}, ${getCiudadLabel(d.estado, d.ciudad)}`).join(' • ');
     };
 
-    const getDestinosText = () => {
-        if (fichaData.destinos.length === 0) return 'Sin destinos';
-        return fichaData.destinos.map(d => `${getEstadoLabel(d.estado)}, ${getCiudadLabel(d.estado, d.ciudad)}`).join(' • ');
-    };
-
-    const handleBackToFormulario = () => {
-        setCurrentScreen('dashboard');
-    };
-
-    const handleCreateNewFicha = () => {
-        // Reset selected ficha
-        setSelectedFicha(null);
-
-        // Reset ficha data completely
-        setFichaData({
-            folio: '',
-            conductorNombre: '',
-            conductorCargo: '',
-            vehiculo: '',
-            destinos: []
-        });
-
-        // Generate new folio
-        const generateFolio = () => {
-            const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
-            const number = currentCounter.toString().padStart(4, '0');
-            localStorage.setItem('folioCounter', (currentCounter + 1).toString());
-            return `PV-${number}`;
-        };
-
-        // Set new folio
-        setFichaData(prev => ({
-            ...prev,
-            folio: generateFolio()
-        }));
-
-        // Reset validation errors
-        setShowValidationErrors(false);
-
-        // Go to crear ficha screen
-        setCurrentScreen('crear-ficha');
-    };
-
-    const handleSelectFicha = (ficha: FichaGuardada) => {
-        setSelectedFicha(ficha);
-        setFichaData({
-            folio: ficha.folio,
-            conductorNombre: ficha.conductorNombre,
-            conductorCargo: ficha.conductorCargo,
-            vehiculo: ficha.vehiculo || '',
-            destinos: ficha.destinos
-        });
-    };
-
-    const handleGoToDetailFromSelected = () => {
-        if (!selectedFicha) return;
-        setCurrentScreen('detalle-ficha');
-    };
-
-    const handleBackToDashboard = () => {
-        setCurrentScreen('dashboard');
-    };
-
-    const handleGoToResumenEntrada = (entradaData?: any) => {
-        // Guardar datos de entrada temporalmente
-        if (entradaData) {
-            setTempEntradaData(entradaData);
-        }
-
-        setCurrentScreen('resumen-entrada');
-    };
-
-    const handleSendResumeToEmail = (email: string) => {
-        // Actualizar la comisión con los datos de entrada
-        if (tempEntradaData && tempEntradaData.kmEntrada && tempEntradaData.combustible !== undefined && tempEntradaData.firmaConductor && tempEntradaData.firmaAprobador) {
-            const comisionesActualizadas = comisionesGuardadas.map(comision =>
-                comision.folio === formData.folio
-                    ? {
-                        ...comision,
-                        estado: 'con-entrada' as const,
-                        entradaData: {
-                            kmEntrada: tempEntradaData.kmEntrada,
-                            combustible: tempEntradaData.combustible,
-                            firmaConductor: tempEntradaData.firmaConductor,
-                            firmaAprobador: tempEntradaData.firmaAprobador,
-                            fotosFechas: new Date().toLocaleDateString('es-MX')
-                        }
-                    }
-                    : comision
-            );
-
-            setComisionesGuardadas(comisionesActualizadas);
-
-            // Actualizar selectedComision si es la misma comisión
-            if (selectedComision && selectedComision.folio === formData.folio) {
-                const comisionActualizada = comisionesActualizadas.find(c => c.folio === formData.folio);
-                if (comisionActualizada) {
-                    setSelectedComision(comisionActualizada);
-                }
-            }
-
-            // Guardar en localStorage
-            try {
-                localStorage.setItem('comisionesGuardadas', JSON.stringify(comisionesActualizadas));
-            } catch (error) {
-                console.error('Error updating comision with entrada data:', error);
-            }
-        }
-
-        // Ir a envío de correo con el email del destinatario
-        setCurrentScreen('envio-correo');
-    };
-
-    const handleGoToEnvioCorreo = (entradaData?: any) => {
-        // Funcionalidad legacy para mantener compatibilidad
-        handleGoToResumenEntrada(entradaData);
-    };
-
-    const handleBackToRegistroEntrada = () => {
-        setCurrentScreen('registro-entrada');
-    };
-
-    const handleBackToResumenEntrada = () => {
-        setCurrentScreen('resumen-entrada');
-    };
-
-    const handleCompleteFlow = () => {
-        // Actualizar estado de la comisión a 'enviada' (completamente terminada)
-        const comisionesActualizadas = comisionesGuardadas.map(comision =>
-            comision.folio === formData.folio
-                ? { ...comision, estado: 'enviada' as const }
-                : comision
-        );
-
-        setComisionesGuardadas(comisionesActualizadas);
-
-        // Guardar en localStorage
-        try {
-            localStorage.setItem('comisionesGuardadas', JSON.stringify(comisionesActualizadas));
-        } catch (error) {
-            console.error('Error updating comision state:', error);
-        }
-
-        // Reset form and go back to dashboard
-        setFormData({
-            folio: '',
-            destinos: [],
-            fechaSalida: '',
-            horaSalida: '',
-            fechaEntrega: '',
-            horaEntrega: '',
-            conductor: '',
-            vehiculo: ''
-        });
-
-        // Generate new folio
-        const generateFolio = () => {
-            const currentCounter = parseInt(localStorage.getItem('folioCounter') || '1', 10);
-            const number = currentCounter.toString().padStart(4, '0');
-            localStorage.setItem('folioCounter', (currentCounter + 1).toString());
-            return `PV-${number}`;
-        };
-
-        setFormData(prev => ({
-            ...prev,
-            folio: generateFolio()
-        }));
-
-        setCurrentScreen('dashboard');
-        toast.success('Proceso completado. Puedes crear una nueva comisión.');
-    };
-
-    const [fichaToDelete, setFichaToDelete] = useState<string | null>(null);
-
-    const handleOpenDeleteModal = (folio: string) => {
-        setFichaToDelete(folio);
-        setShowDeleteModal(true);
-    };
-
-    const handleDeleteFicha = async () => {
-        if (!fichaToDelete) return;
-
-        try {
-            // Llamar a la API para el borrado lógico
-            const response = await comissionsAPI.delete(fichaToDelete);
-
-            if (response.data.success) {
-                // Filtrar la ficha eliminada del estado local
-                const fichasActualizadas = fichasGuardadas.filter(ficha => ficha.folio !== fichaToDelete);
-                setFichasGuardadas(fichasActualizadas);
-
-                // Si la ficha eliminada era la seleccionada, deseleccionar
-                if (selectedFicha?.folio === fichaToDelete) {
-                    setSelectedFicha(null);
-                }
-
-                toast.success(`Ficha ${fichaToDelete} eliminada correctamente`);
-            } else {
-                throw new Error(response.data.message || 'Error en la respuesta de la API');
-            }
-        } catch (error) {
-            console.error('Error al eliminar la ficha:', error);
-            toast.error('Error al eliminar la ficha');
-        } finally {
-            // Cerrar modal y limpiar estado
-            setShowDeleteModal(false);
-            setFichaToDelete(null);
-        }
-    };
-
-    // Funciones legacy para compatibilidad
-    const getSelectedDriverName = () => {
-        return fichaData.conductorNombre || 'N/A';
-    };
-
-    const getSelectedVehicleName = (vehicleValue?: string) => {
-        const value = vehicleValue || fichaData.vehiculo;
-        const vehicle = vehicles.find(v => v.value === value);
-        return vehicle ? vehicle.label : 'N/A';
-    };
-
-    const handleSave = () => {
-        handleSaveFicha();
-    };
-
-    const updateFormData = (field: keyof ComisionData, value: any) => {
-        // Legacy function for compatibility
-        setFormData(prev => ({ ...prev, [field]: value }));
-    };
-
-    return (
-        <AnimatePresence mode="wait">
-            {currentScreen === 'login' ? (
-                <div key="login">
-                    <Login onLogin={handleLogin} />
-                </div>
-            ) : currentScreen === 'dashboard' ? (
-                <div key="dashboard">
-                    <div className="min-h-screen bg-gray-50 pb-24">
-                        {/* Safe Area Top */}
-                        <div className="h-12 bg-[rgba(0,0,0,1)]"></div>
-
-                        {/* Header */}
-                        <div className="space-y-0">
-                            {/* Logo header with black background */}
-                            <div className="bg-black py-8 px-4 px-[16px] py-[5px]">
-                                <div className="flex items-center justify-center">
-                                    <img
-                                        src={grupoOptimoLogo}
-                                        alt="GRUPO OPTIMO"
-                                        className="h-12 w-auto object-contain px-[54px] py-[0px]"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Title section */}
-                            <div className="bg-white px-4 py-4 border-b border-gray-200">
-                                <h1 className="text-black text-center text-xl">Fichas</h1>
-                            </div>
-                        </div>
-
-                        {/* Content */}
+    const renderScreen = () => {
+        switch (currentScreen) {
+            case 'login':
+                return <Login onLogin={handleLogin} />;
+            case 'dashboard':
+                return (
+                    <div key="dashboard" className="min-h-screen bg-gray-50 pb-24">
+                        <div className="h-12 bg-black"></div>
+                        <div className="bg-black py-2 px-4"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto"/></div></div>
+                        <div className="bg-white px-4 py-4 border-b"><h1 className="text-black text-center text-xl">Fichas</h1></div>
                         <div className="max-w-[360px] mx-auto px-4 py-6 space-y-4">
-
-                            {/* Fichas Guardadas */}
                             {fichasGuardadas.length === 0 ? (
                                 <div className="text-center py-8">
                                     <p className="text-gray-500">No hay fichas registradas</p>
@@ -1339,7 +813,6 @@ export default function App() {
                                             key={ficha.folio}
                                             className="bg-white rounded-lg p-6 shadow-lg transition-all relative hover:shadow-xl"
                                         >
-                                            {/* Botón de eliminar */}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -1354,6 +827,8 @@ export default function App() {
                                             <div className="pr-8">
                                                 <div className="flex justify-between items-start mb-4">
                                                     <div className="space-y-1">
+                                                        <p className="text-gray-500 text-sm">Folio</p>
+                                                        <p className="text-black text-lg font-semibold">{ficha.folio}</p>
                                                         <p className="text-gray-500 text-sm">Conductor</p>
                                                         <p className="text-black">{ficha.conductorNombre}</p>
                                                         <p className="text-gray-400 text-sm">{ficha.conductorCargo}</p>
@@ -1362,42 +837,38 @@ export default function App() {
                                                         )}
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="text-black">{ficha.folio}</p>
+                                                        <p className="text-gray-500 text-sm">Creación</p>
+                                                        <p className="text-black text-sm">{new Date(ficha.fechaCreacion).toLocaleDateString()}</p>
+                                                        <p className="text-gray-400 text-xs">{new Date(ficha.fechaCreacion).toLocaleTimeString()}</p>
                                                     </div>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <p className="text-gray-500 text-sm">Ruta</p>
+                                                    <p className="text-black text-sm line-clamp-2">{getDestinosText(ficha.destinos)}</p>
                                                 </div>
                                             </div>
 
-                                            {/* Estado de la ficha */}
                                             <div className="mt-4 pt-4 border-t border-gray-200">
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <div className={`h-2 w-2 rounded-full ${
                                                             ficha.estado === 'creada' ? 'bg-blue-500' :
-                                                                ficha.estado === 'con-entrada' ? 'bg-green-500' :
-                                                                    ficha.estado === 'con-salida' ? 'bg-orange-500' :
-                                                                        'bg-gray-500'
+                                                                ficha.estado === 'con-salida' ? 'bg-orange-500' :
+                                                                    'bg-green-500'
                                                         }`}></div>
                                                         <p className="text-sm text-gray-600">
                                                             {ficha.estado === 'creada' ? 'Ficha creada' :
-                                                                ficha.estado === 'con-entrada' ? 'Con entrada registrada' :
-                                                                    ficha.estado === 'con-salida' ? 'Con salida registrada' :
-                                                                        'Completada'}
+                                                                ficha.estado === 'con-salida' ? 'Con salida' :
+                                                                    'Completada'}
                                                         </p>
                                                     </div>
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
                                                         className="h-8 bg-[rgba(225,225,225,1)]"
-                                                        onClick={() => {
-                                                            setSelectedFicha(ficha);
-                                                            setFichaData({
-                                                                folio: ficha.folio,
-                                                                conductorNombre: ficha.conductorNombre,
-                                                                conductorCargo: ficha.conductorCargo,
-                                                                vehiculo: ficha.vehiculo || '',
-                                                                destinos: ficha.destinos
-                                                            });
-                                                            setCurrentScreen('detalle-ficha');
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleSelectFicha(ficha);
                                                         }}
                                                     >
                                                         <Eye className="h-3 w-3 mr-1" />
@@ -1409,512 +880,52 @@ export default function App() {
                                     ))
                             )}
                         </div>
-
-                        {/* Sticky CTA */}
-                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 shadow-lg">
+                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-4 shadow-lg">
                             <div className="max-w-[360px] mx-auto">
-                                <Button
-                                    className="w-full h-12"
-                                    style={{
-                                        backgroundColor: '#000000 !important',
-                                        color: '#ffffff !important',
-                                        border: '1px solid #000000 !important',
-                                        boxShadow: 'none !important'
-                                    }}
-                                    onClick={handleCreateNewFicha}
-                                >
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Crear ficha
-                                </Button>
+                                <Button className="w-full h-12 bg-black text-white" onClick={handleCreateNewFicha}><Plus className="h-4 w-4 mr-2" />Crear ficha</Button>
                             </div>
                         </div>
-
-                        {/* Delete Confirmation Modal */}
                         {showDeleteModal && (
                             <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-                                <DialogContent className="max-w-[320px] rounded-lg">
-                                    <DialogHeader>
-                                        <DialogTitle>Eliminar ficha</DialogTitle>
-                                        <DialogDescription>
-                                            Se eliminará permanentemente la información.
-                                        </DialogDescription>
-                                    </DialogHeader>
-
-                                    <div className="space-y-4">
-                                        <div className="flex gap-3">
-                                            <Button
-                                                variant="outline"
-                                                className="flex-1"
-                                                onClick={() => {
-                                                    setShowDeleteModal(false);
-                                                    setFichaToDelete(null);
-                                                }}
-                                            >
-                                                Cancelar
-                                            </Button>
-                                            <Button
-                                                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                                                onClick={handleDeleteFicha}
-                                            >
-                                                Eliminar
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </DialogContent>
-                            </Dialog>
-                        )}
-
-                        {/* Details Modal */}
-                        {showDetailsModal && (
-                            <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-                                <DialogContent className="max-w-[340px] rounded-lg max-h-[80vh] overflow-y-auto">
-                                    <DialogHeader>
-                                        <DialogTitle>Detalles de la comisión</DialogTitle>
-                                        <DialogDescription>
-                                            Información completa de la comisión incluyendo datos de salida, entrada y ruta
-                                        </DialogDescription>
-                                    </DialogHeader>
-
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                                <p className="text-gray-500">Folio</p>
-                                                <p className="text-black">{formData.folio}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Conductor</p>
-                                                <p className="text-black">{getSelectedDriverName()}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Vehículo</p>
-                                                <p className="text-black">{getSelectedVehicleName()}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Salida</p>
-                                                <p className="text-black">{formData.fechaSalida}</p>
-                                                <p className="text-gray-400 text-xs">{formData.horaSalida}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-500">Entrega</p>
-                                                <p className="text-black">{formData.fechaEntrega}</p>
-                                                <p className="text-gray-400 text-xs">{formData.horaEntrega}</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Información de la comisión */}
-                                        <div className="border-t pt-4">
-                                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                                                <div className="flex items-center gap-2 mb-4">
-                                                    <div className="h-2 w-2 bg-black rounded-full"></div>
-                                                    <p className="text-black">Detalles de la comisión</p>
-                                                </div>
-
-                                                {/* Ruta programada */}
-                                                <div className="mb-4 pb-3 border-b border-gray-200">
-                                                    <p className="text-gray-600 text-sm mb-2">Ruta programada</p>
-                                                    <div className="space-y-2">
-                                                        {formData.destinos.map((destino, index) => (
-                                                            <div key={destino.id} className="bg-white rounded-lg p-3 border border-gray-300">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-xs">
-                                                                        {index + 1}
-                                                                    </div>
-                                                                    <div>
-                                                                        <span className="text-gray-700 text-sm">{getEstadoLabel(destino.estado)}, {getCiudadLabel(destino.estado, destino.ciudad)}</span>
-                                                                        {destino.comentario && (
-                                                                            <p className="text-xs text-gray-500">{destino.comentario}</p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Estado de la comisión */}
-                                                <div className="text-center">
-                                                    <p className="text-gray-600 text-sm">Estado actual</p>
-                                                    <p className="text-black">
-                                                        {selectedComision?.estado === 'completada' ? 'Lista para registro de entrada' :
-                                                            selectedComision?.estado === 'con-entrada' ? 'Entrada registrada' :
-                                                                selectedComision?.estado === 'enviada' ? 'Comisión finalizada' :
-                                                                    'Comisión guardada'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Información de entrada - siempre visible */}
-                                        <div className="border-t pt-4">
-                                            <div className={`rounded-lg p-4 mb-4 ${selectedComision?.entradaData ? 'bg-gray-50 border border-gray-400' : 'bg-gray-100 border border-gray-300'}`}>
-                                                <div className="flex items-center gap-2 mb-4">
-                                                    <div className={`h-2 w-2 rounded-full ${selectedComision?.entradaData ? 'bg-gray-600' : 'bg-gray-400'}`}></div>
-                                                    <p className="text-black">
-                                                        {selectedComision?.entradaData ? 'Información de entrada registrada' : 'Información de entrada'}
-                                                    </p>
-                                                </div>
-
-                                                {/* Kilómetros y Combustible */}
-                                                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                                                    <div>
-                                                        <p className="text-gray-600">Kilómetros de entrada</p>
-                                                        <p className="text-black">
-                                                            {selectedComision?.entradaData?.kmEntrada ? `${selectedComision.entradaData.kmEntrada} km` : 'Pendiente de registro'}
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-gray-600">Nivel de combustible</p>
-                                                        <p className="text-black">
-                                                            {selectedComision?.entradaData?.combustible !== undefined ? `${selectedComision.entradaData.combustible}/8` : 'Pendiente de registro'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Fotos del vehículo */}
-                                                <div className="mb-4 pb-3 border-b border-gray-300">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-gray-600 text-sm">Evidencia fotográfica</p>
-                                                        {selectedComision?.entradaData && (
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="text-xs h-7"
-                                                                onClick={() => setShowPhotosModal(true)}
-                                                            >
-                                                                <Eye className="h-3 w-3 mr-1" />
-                                                                Ver fotos
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                    <div
-                                                        className={`rounded-lg p-3 border ${selectedComision?.entradaData ? 'bg-white border-gray-400 cursor-pointer hover:bg-gray-50 transition-colors' : 'bg-gray-50 border-gray-300'}`}
-                                                        onClick={() => {
-                                                            if (selectedComision?.entradaData) {
-                                                                setShowPhotosModal(true);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            {selectedComision?.entradaData ? (
-                                                                <>
-                                                                    <CheckCircle className="h-4 w-4 text-black" />
-                                                                    <span className="text-gray-700 text-sm">Fotos del vehículo capturadas</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                                                                    <span className="text-gray-500 text-sm">Fotos del vehículo pendientes</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-xs text-gray-500 ml-6">
-                                                            {selectedComision?.entradaData ?
-                                                                `Vehículo recibido con ${selectedComision.entradaData.kmEntrada} km y combustible ${selectedComision.entradaData.combustible}/8` :
-                                                                'Estado general, carrocería y compartimientos'
-                                                            }
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                {/* Firmas */}
-                                                <div className="mb-4 pb-3 border-b border-gray-300">
-                                                    <p className="text-gray-600 text-sm mb-2">
-                                                        {selectedComision?.entradaData ? 'Firmas completadas' : 'Firmas requeridas'}
-                                                    </p>
-                                                    <div className="space-y-2">
-                                                        <div
-                                                            className={`rounded-lg p-3 border ${selectedComision?.entradaData ? 'bg-white border-gray-400 cursor-pointer hover:bg-gray-50 transition-colors' : 'bg-gray-50 border-gray-300'}`}
-                                                            onClick={() => {
-                                                                if (selectedComision?.entradaData) {
-                                                                    setSelectedSignatureType('conductor');
-                                                                    setShowSignatureModal(true);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                {selectedComision?.entradaData ? (
-                                                                    <>
-                                                                        <CheckCircle className="h-4 w-4 text-black" />
-                                                                        <span className="text-gray-700 text-sm">Firma del conductor</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                                                                        <span className="text-gray-500 text-sm">Firma del conductor</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 ml-6">
-                                                                {selectedComision?.entradaData ? 'Autorización y validación de entrega' : 'Pendiente de captura'}
-                                                            </p>
-                                                        </div>
-                                                        <div
-                                                            className={`rounded-lg p-3 border ${selectedComision?.entradaData ? 'bg-white border-gray-400 cursor-pointer hover:bg-gray-50 transition-colors' : 'bg-gray-50 border-gray-300'}`}
-                                                            onClick={() => {
-                                                                if (selectedComision?.entradaData) {
-                                                                    setSelectedSignatureType('aprobador');
-                                                                    setShowSignatureModal(true);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <div className="flex items-center gap-2">
-                                                                {selectedComision?.entradaData ? (
-                                                                    <>
-                                                                        <CheckCircle className="h-4 w-4 text-black" />
-                                                                        <span className="text-gray-700 text-sm">Firma de quien aprueba</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                                                                        <span className="text-gray-500 text-sm">Firma de quien aprueba</span>
-                                                                    </>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-gray-500 ml-6">
-                                                                {selectedComision?.entradaData ? 'Autorización de recepción' : 'Pendiente de captura'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Fecha y hora de registro */}
-                                                {selectedComision?.entradaData?.fotosFechas ? (
-                                                    <div className="text-center">
-                                                        <p className="text-gray-600 text-sm">Registro completado</p>
-                                                        <p className="text-gray-600 text-sm">{selectedComision.entradaData.fotosFechas}</p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <p className="text-gray-500 text-sm">Registro pendiente</p>
-                                                        <p className="text-gray-400 text-sm">Se completará al hacer la entrada</p>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Modal de Fotos */}
-                                            {showPhotosModal && (
-                                                <Dialog open={showPhotosModal} onOpenChange={setShowPhotosModal}>
-                                                    <DialogContent className="max-w-[340px] rounded-lg max-h-[80vh] overflow-y-auto">
-                                                        <DialogHeader>
-                                                            <DialogTitle>Evidencia fotográfica</DialogTitle>
-                                                            <DialogDescription>
-                                                                Fotos capturadas del vehículo durante la entrada
-                                                            </DialogDescription>
-                                                        </DialogHeader>
-
-                                                        <div className="space-y-4">
-                                                            <div className="grid grid-cols-2 gap-3">
-                                                                {/* Fotos de ejemplo - en un caso real estas vendrían de selectedComision?.entradaData */}
-                                                                {[
-                                                                    { title: 'Estado general', description: 'Vista frontal del vehículo' },
-                                                                    { title: 'Tablero', description: 'Instrumentos y controles' },
-                                                                    { title: 'Lateral izquierdo', description: 'Carrocería y puertas' },
-                                                                    { title: 'Lateral derecho', description: 'Carrocería y puertas' },
-                                                                    { title: 'Parte trasera', description: 'Vista posterior' },
-                                                                    { title: 'Interior', description: 'Asientos y compartimientos' }
-                                                                ].map((foto, index) => (
-                                                                    <div key={index} className="bg-gray-100 rounded-lg p-4 aspect-square flex flex-col items-center justify-center text-center border border-gray-300">
-                                                                        <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center mb-2">
-                                                                            <Eye className="h-4 w-4 text-white" />
-                                                                        </div>
-                                                                        <p className="text-xs text-gray-700 mb-1">{foto.title}</p>
-                                                                        <p className="text-xs text-gray-500">{foto.description}</p>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-
-                                                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-300">
-                                                                <p className="text-sm text-gray-700 mb-1">Información del registro</p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Fotos capturadas el {selectedComision?.entradaData?.fotosFechas || new Date().toLocaleDateString('es-MX')}
-                                                                </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Kilometraje: {selectedComision?.entradaData?.kmEntrada || 'N/A'} km
-                                                                </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Combustible: {selectedComision?.entradaData?.combustible || 'N/A'}/8
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </DialogContent>
-                                                </Dialog>
-                                            )}
-
-                                            {/* Modal de Firmas */}
-                                            {showSignatureModal && selectedSignatureType && (
-                                                <Dialog open={showSignatureModal} onOpenChange={setShowSignatureModal}>
-                                                    <DialogContent className="max-w-[340px] rounded-lg max-h-[80vh] overflow-y-auto">
-                                                        <DialogHeader>
-                                                            <DialogTitle>
-                                                                {selectedSignatureType === 'conductor'
-                                                                    ? 'Firma del conductor'
-                                                                    : selectedSignatureType === 'aprobador'
-                                                                        ? 'Firma de quien aprueba'
-                                                                        : 'Firma requerida'}
-                                                            </DialogTitle>
-                                                            <DialogDescription>
-                                                                {selectedSignatureType === 'conductor'
-                                                                    ? 'Autorización y validación de entrega del vehículo'
-                                                                    : selectedSignatureType === 'aprobador'
-                                                                        ? 'Autorización de recepción del vehículo'
-                                                                        : 'Captura de firma para validación del proceso'}
-                                                            </DialogDescription>
-                                                        </DialogHeader>
-
-                                                        <div className="space-y-4">
-                                                            {/* Área de firma simulada */}
-                                                            <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-8 text-center min-h-[200px] flex flex-col items-center justify-center">
-                                                                <div className="bg-black text-white rounded-full p-3 mb-4">
-                                                                    <CheckCircle className="h-6 w-6" />
-                                                                </div>
-                                                                <p className="text-gray-700 mb-2">Firma capturada</p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    {selectedSignatureType === 'conductor'
-                                                                        ? `Firmado por: ${getSelectedDriverName()}`
-                                                                        : 'Firmado por: Supervisor autorizado'
-                                                                    }
-                                                                </p>
-
-                                                                {/* Línea de firma simulada */}
-                                                                <div className="mt-6 w-full">
-                                                                    <div className="bg-black h-0.5 w-3/4 mx-auto mb-2 opacity-80"></div>
-                                                                    <div className="bg-black h-0.5 w-1/2 mx-auto mb-2 opacity-60"></div>
-                                                                    <div className="bg-black h-0.5 w-2/3 mx-auto opacity-40"></div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-300">
-                                                                <p className="text-sm text-gray-700 mb-1">Detalles de la firma</p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Fecha: {selectedComision?.entradaData?.fotosFechas || new Date().toLocaleDateString('es-MX')}
-                                                                </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Hora: {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                                                                </p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    Folio: {formData.folio}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </DialogContent>
-                                                </Dialog>
-                                            )}
-                                        </div>
-
-                                        <div className="border-t pt-4">
-                                            <p className="text-gray-500 text-sm mb-2">Ruta</p>
-                                            <div className="space-y-2">
-                                                {formData.destinos.map((destino, index) => (
-                                                    <div key={destino.id} className="text-sm">
-                                                        <p className="text-black">
-                                                            {index + 1}. {getEstadoLabel(destino.estado)}, {getCiudadLabel(destino.estado, destino.ciudad)}
-                                                        </p>
-                                                        {destino.comentario && (
-                                                            <p className="text-gray-400 text-xs ml-3">{destino.comentario}</p>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
+                                <DialogContent className="max-w-[320px]">
+                                    <DialogHeader><DialogTitle>Eliminar ficha</DialogTitle><DialogDescription>¿Estás seguro? Esta acción no se puede deshacer.</DialogDescription></DialogHeader>
+                                    <div className="flex justify-end gap-2 pt-4">
+                                        <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>Cancelar</Button>
+                                        <Button variant="destructive" onClick={handleDeleteFicha}>Eliminar</Button>
                                     </div>
                                 </DialogContent>
                             </Dialog>
                         )}
                     </div>
-                </div>
-            ) : currentScreen === 'registro-entrada' ? (
-                <div key="registro-entrada">
-                    <RegistroEntrada
-                        folio={formData.folio}
-                        conductor={getSelectedDriverName()}
-                        horaSalida={formData.horaSalida}
-                        onBack={handleBackToDashboard}
-                        onComplete={handleGoToResumenEntrada}
-                        comisionData={{
-                            destinos: formData.destinos,
-                            fechaSalida: formData.fechaSalida,
-                            fechaEntrega: formData.fechaEntrega,
-                            horaEntrega: formData.horaEntrega,
-                            vehiculo: getSelectedVehicleName()
-                        }}
-                    />
-                </div>
-            ) : currentScreen === 'crear-ficha' ? (
-                <div key="crear-ficha">
-                    <div className="min-h-screen bg-gray-50">
-                        {/* Safe Area Top */}
-                        <div className="h-12 bg-[rgba(0,0,0,1)]"></div>
-
-                        {/* Header */}
-                        <div className="space-y-0">
-                            {/* Logo header with black background */}
-                            <div className="bg-black px-[16px] py-[5px]">
-                                <div className="flex items-center justify-center">
-                                    <img
-                                        src={grupoOptimoLogo}
-                                        alt="GRUPO OPTIMO"
-                                        className="h-12 w-auto object-contain px-[54px] py-[0px]"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Title section */}
-                            <div className="bg-white px-4 py-4 border-b border-gray-200">
-                                <h1 className="text-black text-center text-xl">Crear Ficha</h1>
+                );
+            case 'crear-ficha':
+                return (
+                    <div key="crear-ficha" className="min-h-screen bg-gray-50">
+                         <div className="h-12 bg-black"></div>
+                        <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto" /></div></div>
+                        <div className="bg-white px-4 py-4 border-b">
+                             <div className="flex items-center gap-3">
+                                <Button variant="ghost" size="sm" onClick={handleBackToDashboard} className="p-2 h-auto"><ArrowLeft className="h-5 w-5" /></Button>
+                                <h1 className="text-black text-xl flex-1 text-center mr-11">Crear Ficha</h1>
                             </div>
                         </div>
-
-                        {/* Scrollable Content */}
                         <div className="overflow-y-auto pb-40">
                             <div className="max-w-[360px] mx-auto px-4 py-6 space-y-6">
-
-                                {/* Main Form */}
                                 <div className="bg-white rounded-lg p-4 space-y-4">
-                                    {/* Folio */}
-                                    <div>
-                                        <Label htmlFor="folio">Folio</Label>
-                                        <Input
-                                            id="folio"
-                                            value={fichaData.folio}
-                                            disabled
-                                            className="mt-1 bg-gray-50"
-                                        />
-                                    </div>
-
-                                    {/* Datos generales */}
+                                    <div><Label htmlFor="folio">Folio</Label><Input id="folio" value={fichaData.folio} disabled className="mt-1 bg-gray-50" /></div>
                                     <div className="space-y-4">
-                                        {/* Conductor */}
                                         <div>
                                             <Label className={showValidationErrors && !fichaData.conductorNombre ? "text-destructive" : ""}>
                                                 Nombre del conductor *
                                             </Label>
                                             <div className="mt-1 flex gap-2">
-                                                <div className="flex-1">
-                                                    <BottomSheetSelect
-                                                        id="conductorNombre"
-                                                        options={drivers}
-                                                        value={drivers.find(d => d.label === fichaData.conductorNombre)?.value || ''}
-                                                        onValueChange={handleConductorChange}
-                                                        placeholder="Seleccionar conductor"
-                                                    />
-                                                </div>
-                                                <Button
-                                                    id="addConductorBtn"
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setIsAddDriverModalOpen(true)}
-                                                    className="h-[42px] w-[42px] p-0 flex-shrink-0"
-                                                >
-                                                    <Plus className="h-4 w-4" />
-                                                </Button>
+                                                <div className="flex-1"><BottomSheetSelect options={drivers} value={drivers.find(d => d.label === fichaData.conductorNombre)?.value || ''} onValueChange={(value) => { const d = drivers.find(d => d.value === value); setFichaData(p => ({...p, conductorNombre: d?.label || '', conductorCargo: d?.cargo || ''})); }} placeholder="Seleccionar conductor"/></div>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsAddDriverModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Plus className="h-4 w-4" /></Button>
                                             </div>
                                             {showValidationErrors && !fichaData.conductorNombre && (
                                                 <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>
                                             )}
                                         </div>
-
-                                        {/* Cargo */}
                                         <div>
                                             <Label className={showValidationErrors && !fichaData.conductorCargo ? "text-destructive" : ""}>
                                                 Cargo *
@@ -1922,7 +933,7 @@ export default function App() {
                                             <Input
                                                 id="conductorCargo"
                                                 value={fichaData.conductorCargo}
-                                                onChange={(e) => updateFichaData('conductorCargo', e.target.value)}
+                                                onChange={(e) => setFichaData(p => ({...p, conductorCargo: e.target.value}))}
                                                 placeholder="Ingresa el cargo del conductor"
                                                 className="mt-1"
                                             />
@@ -1930,70 +941,27 @@ export default function App() {
                                                 <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>
                                             )}
                                         </div>
-
-                                        {/* Vehículo */}
                                         <div>
                                             <Label className={showValidationErrors && !fichaData.vehiculo ? "text-destructive" : ""}>
                                                 Vehículo *
                                             </Label>
                                             <div className="mt-1 flex gap-2">
-                                                <div className="flex-1">
-                                                    <BottomSheetSelect
-                                                        id="vehiculo"
-                                                        options={vehicles}
-                                                        value={fichaData.vehiculo}
-                                                        onValueChange={(value) => updateFichaData('vehiculo', value)}
-                                                        placeholder="Seleccionar vehículo"
-                                                    />
-                                                </div>
-                                                <Button
-                                                    id="addVehiculoBtn"
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setIsAddVehicleModalOpen(true)}
-                                                    className="h-[42px] w-[42px] p-0 flex-shrink-0"
-                                                >
-                                                    <Plus className="h-4 w-4" />
-                                                </Button>
+                                                <div className="flex-1"><BottomSheetSelect options={vehicles} value={fichaData.vehiculo} onValueChange={(v) => setFichaData(p => ({...p, vehiculo: v}))} placeholder="Seleccionar vehículo"/></div>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsAddVehicleModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Plus className="h-4 w-4" /></Button>
                                             </div>
                                             {showValidationErrors && !fichaData.vehiculo && (
                                                 <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>
                                             )}
                                         </div>
                                     </div>
-
-                                    {/* Ruta */}
-                                    <div
-                                        id="rutaSection"
-                                        className="space-y-3"
-                                    >
+                                    <div className="space-y-3">
                                         <div className="flex items-center justify-between">
                                             <Label className={showValidationErrors && fichaData.destinos.length === 0 ? "text-destructive" : ""}>
                                                 Ruta *
                                             </Label>
-                                            <Button
-                                                id="addDestinoBtn"
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={openAddDestinoModal}
-                                                className="h-8"
-                                            >
-                                                <Plus className="h-4 w-4 mr-1" />
-                                                Añadir destino
-                                            </Button>
+                                            <Button type="button" variant="outline" size="sm" onClick={openAddDestinoModal} className="h-8"><Plus className="h-4 w-4 mr-1" />Añadir destino</Button>
                                         </div>
-
-                                        <DestinosList
-                                            id="destinosList"
-                                            destinos={fichaData.destinos}
-                                            onEditDestino={handleEditDestino}
-                                            onDeleteDestino={handleDeleteDestino}
-                                            getEstadoLabel={getEstadoLabel}
-                                            getCiudadLabel={getCiudadLabel}
-                                        />
-
+                                        <DestinosList destinos={fichaData.destinos} onEditDestino={handleEditDestino} onDeleteDestino={handleDeleteDestino} getEstadoLabel={getEstadoLabel} getCiudadLabel={getCiudadLabel}/>
                                         {showValidationErrors && fichaData.destinos.length === 0 && (
                                             <p className="text-destructive text-sm">Debe agregar al menos un destino</p>
                                         )}
@@ -2001,116 +969,24 @@ export default function App() {
                                 </div>
                             </div>
                         </div>
-
-                        {/* Sticky CTA */}
-                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 shadow-lg">
-                            <div className="max-w-[360px] mx-auto space-y-3">
-                                <Button
-                                    id="guardarFichaBtn"
-                                    className="w-full h-12"
-                                    onClick={handleSaveFicha}
-                                    disabled={!validateFichaForm()}
-                                >
-                                    Guardar ficha
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="w-full h-12"
-                                    onClick={handleBackToDashboard}
-                                >
-                                    Cancelar
-                                </Button>
-                            </div>
+                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-4 shadow-lg">
+                            <div className="max-w-[360px] mx-auto space-y-3"><Button className="w-full h-12" onClick={handleSaveFicha}>Guardar ficha</Button><Button variant="outline" className="w-full h-12" onClick={handleBackToDashboard}>Cancelar</Button></div>
                         </div>
-
-                        {/* Modals */}
-                        <AddDriverModal
-                            id="modalNuevoConductor"
-                            open={isAddDriverModalOpen}
-                            onOpenChange={setIsAddDriverModalOpen}
-                            onDriverAdded={handleDriverAdded}
-                        />
-
-                        <AddVehicleModal
-                            id="modalNuevoVehiculo"
-                            open={isAddVehicleModalOpen}
-                            onOpenChange={setIsAddVehicleModalOpen}
-                            onVehicleAdded={handleVehicleAdded}
-                        />
-
-                        <AddDestinoModal
-                            id="modalDestino"
-                            open={isAddDestinoModalOpen}
-                            onOpenChange={setIsAddDestinoModalOpen}
-                            onDestinoAdded={handleDestinoAdded}
-                            editingDestino={editingDestino}
-                            estados={estados}
-                            ciudades={ciudades}
-                            loadCiudadesForEstado={loadCiudadesForEstado}
-                            loadingCiudades={loadingCiudades}
-                        />
+                        <AddDriverModal open={isAddDriverModalOpen} onOpenChange={setIsAddDriverModalOpen} onDriverAdded={handleDriverAdded} />
+                        <AddVehicleModal open={isAddVehicleModalOpen} onOpenChange={setIsAddVehicleModalOpen} onVehicleAdded={handleVehicleAdded} />
+                        <AddDestinoModal open={isAddDestinoModalOpen} onOpenChange={setIsAddDestinoModalOpen} onDestinoAdded={(d) => {if (editingDestino) {setFichaData(p => ({...p, destinos: p.destinos.map(dest => dest.id === d.id ? dest : dest)}));} else {setFichaData(p => ({...p, destinos: [...p.destinos, d]}));} setEditingDestino(null);}} editingDestino={editingDestino} estados={estados} ciudades={ciudades} loadCiudadesForEstado={loadCiudadesForEstado} loadingCiudades={loadingCiudades} />
                     </div>
-                </div>
-            ) : currentScreen === 'detalle-ficha' ? (
-                <div key="detalle-ficha">
-                    <DetalleFicha
-                        ficha={selectedFicha || {
-                            folio: fichaData.folio,
-                            conductorNombre: fichaData.conductorNombre,
-                            conductorCargo: ficha.conductorCargo,
-                            vehiculo: fichaData.vehiculo,
-                            destinos: fichaData.destinos,
-                            fechaCreacion: new Date().toISOString(),
-                            estado: 'creada'
-                        }}
-                        onBack={handleBackToDashboard}
-                        onGoToEntrada={handleGoToEntrada}
-                        onGoToSalida={handleGoToSalida}
-                        getEstadoLabel={getEstadoLabel}
-                        getCiudadLabel={getCiudadLabel}
-                        getVehicleName={(value) => {
-                            const vehicle = vehicles.find(v => v.value === value);
-                            return vehicle ? vehicle.label : value;
-                        }}
-                    />
-                </div>
-            ) : currentScreen === 'formulario-entrada' ? (
-                <div key="formulario-entrada">
-                    <FormularioEntrada
-                        ficha={selectedFicha || {
-                            folio: fichaData.folio,
-                            conductorNombre: fichaData.conductorNombre,
-                            conductorCargo: fichaData.conductorCargo,
-                            destinos: fichaData.destinos,
-                            fechaCreacion: new Date().toISOString(),
-                            estado: 'creada'
-                        }}
-                        onBack={() => setCurrentScreen('detalle-ficha')}
-                        onComplete={handleEntradaComplete}
-                    />
-                </div>
-            ) : currentScreen === 'formulario-salida' ? (
-                <div key="formulario-salida">
-                    <FormularioSalida
-                        ficha={selectedFicha || {
-                            folio: fichaData.folio,
-                            conductorNombre: fichaData.conductorNombre,
-                            conductorCargo: fichaData.conductorCargo,
-                            destinos: fichaData.destinos,
-                            fechaCreacion: new Date().toISOString(),
-                            estado: 'creada'
-                        }}
-                        onBack={() => setCurrentScreen('detalle-ficha')}
-                        onComplete={handleSalidaComplete}
-                    />
-                </div>
-            ) : (
-                <div key="legacy">
-                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                        <p className="text-gray-500">Pantalla no encontrada</p>
-                    </div>
-                </div>
-            )}
-        </AnimatePresence>
-    );
+                );
+            case 'detalle-ficha':
+                return selectedFicha && <DetalleFicha key={selectedFicha.folio} ficha={selectedFicha} onBack={handleBackToDashboard} onGoToEntrada={handleGoToEntrada} onGoToSalida={handleGoToSalida} onEditEntrada={handleEditEntrada} onEditSalida={handleEditSalida} getEstadoLabel={getEstadoLabel} getCiudadLabel={getCiudadLabel} getVehicleName={getSelectedVehicleName} refreshFichas={refreshFichas}/>;
+            case 'formulario-salida':
+                return selectedFicha && <FormularioSalida ficha={selectedFicha} onBack={() => setCurrentScreen('detalle-ficha')} onComplete={handleSalidaComplete}/>;
+            case 'formulario-entrada':
+                return selectedFicha && <FormularioEntrada ficha={selectedFicha} onBack={() => setCurrentScreen('detalle-ficha')} onComplete={handleEntradaComplete}/>;
+            default:
+                return <div>Pantalla no encontrada</div>;
+        }
+    };
+
+    return <AnimatePresence mode="wait">{renderScreen()}</AnimatePresence>;
 }

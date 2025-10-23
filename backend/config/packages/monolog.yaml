@@ -1,12 +1,12 @@
-monolog:
-    channels:
-        - deprecation
-
-    handlers:
-        database:
-            type: service
-            id: App\Monolog\DatabaseHandler
-            level: info
+#monolog:
+#    channels:
+#        - deprecation
+#
+#    handlers:
+#        database:
+#            type: service
+#            id: App\Monolog\DatabaseHandler
+#            level: info
 
 # -------------------- ENTORNO DEV --------------------
 when@dev:

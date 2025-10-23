@@ -1,62 +1,85 @@
+version: "3.9"
+
 services:
-  backend:
-    build: ./backend
-    container_name: symfony_api
-    restart: always
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/var/www/html
-    working_dir: /var/www/html
-    depends_on:
-      - db
-    environment:
-      DATABASE_URL: "mysql://user:pass@db:3306/controlvehicular"
-      APP_ENV: dev
-    command: bash -c "composer install && php -S 0.0.0.0:8000 -t public"
-
-  frontend:
-    build: ./frontend
-    container_name: react_app
-    restart: always
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/usr/src/app
-    working_dir: /usr/src/app
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
-    stdin_open: true
-    tty: true
-    depends_on:
-      - backend
-
   db:
     image: mysql:8.0
-    container_name: mysql_db
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: controlvehicular
       MYSQL_USER: user
       MYSQL_PASSWORD: pass
     ports:
-      - "3306:3306"
+      - "3307:3306"
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
     volumes:
-      - ./database/mysql_data:/var/lib/mysql
+      - db_data:/var/lib/mysql
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    container_name: phpmyadmin
-    restart: always
+    restart: unless-stopped
     environment:
       PMA_HOST: db
+      PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: root
-      UPLOAD_LIMIT: 100M
+      UPLOAD_LIMIT: 200M
     ports:
       - "8081:80"
     depends_on:
       - db
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+      - /var/www/html/vendor
+    environment:
+      APP_ENV: dev
+      APP_DEBUG: 1
+      DATABASE_URL: "mysql://user:pass@db:3306/controlvehicular"
+      COMPOSER_ALLOW_SUPERUSER: 1
+      MAILER_DSN: smtp://mailhog:1025
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+    command: >
+      bash -lc "composer install --no-scripts --no-interaction --prefer-dist
+      && php -d variables_order=EGPCS -S 0.0.0.0:8000 -t public"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /usr/src/app
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    environment:
+      VITE_API_URL: "http://localhost:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
 volumes:
   db_data:

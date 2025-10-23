@@ -18,30 +18,39 @@ class PassController extends AbstractController
     {
         $data = json_decode($request->getContent(), true);
 
-        if (!isset($data['comission_id']) || empty($data['comission_id'])) {
-            return new JsonResponse(['success' => false, 'message' => 'El Folio de la comisión es obligatorio.'], 400);
+        if (isset($data['pass_id']) && !empty($data['pass_id'])) {
+            $pass = $em->getRepository(Pass::class)->find($data['pass_id']);
+            if (!$pass) {
+                return new JsonResponse(['success' => false, 'message' => 'El pase a actualizar no fue encontrado.'], 404);
+            }
+        } else {
+            if (!isset($data['comission_id']) || empty($data['comission_id'])) {
+                return new JsonResponse(['success' => false, 'message' => 'El Folio de la comisión es obligatorio para crear un nuevo pase.'], 400);
+            }
+            $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $data['comission_id']]);
+            if (!$comission) {
+                return new JsonResponse(['success' => false, 'message' => "Ficha no encontrada (Folio: {$data['comission_id']})."], 404);
+            }
+            $pass = new Pass();
+            $pass->setComission($comission);
+            $pass->setStartDate(isset($data['start_date']) ? new \DateTime($data['start_date']) : new \DateTime());
+            $pass->setEndDate(new \DateTime('1970-01-01')); // Default date for not-yet-arrived
         }
 
-        $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $data['comission_id']]);
-
-        if (!$comission) {
-            return new JsonResponse(['success' => false, 'message' => "Ficha no encontrada (Folio: {$data['comission_id']})."], 404);
-        }
-
-        $pass = new Pass();
-        $pass->setComission($comission);
-        $pass->setMileage($data['mileage'] ?? 0);
-        $pass->setFuel($data['fuel'] ?? '8');
-        $pass->setDepartureComment($data['departure_comment'] ?? null);
-        $pass->setStartDate(isset($data['start_date']) ? new \DateTime($data['start_date']) : new \DateTime());
-        $pass->setEndDate(new \DateTime('1970-01-01'));
-        $pass->setStatus('1');
-        $pass->setCreatedAt(new \DateTimeImmutable());
+        // Update fields
+        $pass->setDepartureMileage($data['mileage'] ?? $pass->getDepartureMileage() ?? 0);
+        $pass->setFuel($data['fuel'] ?? $pass->getFuel() ?? '8');
+        $pass->setDepartureComment($data['departure_comment'] ?? $pass->getDepartureComment());
         $pass->setUpdatedAt(new \DateTimeImmutable());
 
-        $em->persist($pass);
+        if (!$em->contains($pass)) {
+            $em->persist($pass);
+        }
+
+        // Flush here to get the pass ID if it's new
         $em->flush();
 
+        // --- Handle Inspections (Photos & Signatures) ---
         $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/';
         $signatureDir = $uploadDir . 'signatures/';
         $photoDir = $uploadDir . 'photos/';
@@ -49,6 +58,7 @@ class PassController extends AbstractController
         if (!is_dir($signatureDir)) mkdir($signatureDir, 0777, true);
         if (!is_dir($photoDir)) mkdir($photoDir, 0777, true);
 
+        // Handle new photos
         if (isset($data['inspections']) && is_array($data['inspections'])) {
             foreach ($data['inspections'] as $inspectionData) {
                 if (isset($inspectionData['photo']) && !empty($inspectionData['photo'])) {
@@ -59,42 +69,46 @@ class PassController extends AbstractController
                     $inspection->setComment($inspectionData['comment'] ?? null);
                     $inspection->setStatus('1');
                     $em->persist($inspection);
-                    $em->flush();
+                    $em->flush(); // Flush to get inspection ID
 
                     $photoPath = $photoDir . $inspection->getId() . '_' . $inspectionData['part'] . '.png';
                     $this->saveBase64Image($inspectionData['photo'], $photoPath);
-                    $inspection->setPhotoUrl('/uploads/photos/' . $inspection->getId() . '_' . $inspectionData['part'] . '.png');
+                    $inspection->setPhotoUrl('/uploads/photos/' . basename($photoPath));
                     $em->persist($inspection);
                 }
             }
         }
 
+        // Handle signatures (assuming they might be updated or added)
         if (!empty($data['signature_conductor']) || !empty($data['signature_approver'])) {
-            $inspection = new Inspection();
-            $inspection->setPass($pass);
-            $inspection->setType('signature');
-            $inspection->setPart('salida');
-            $inspection->setStatus('1');
-            $em->persist($inspection);
-            $em->flush();
+            $signatureInspection = $em->getRepository(Inspection::class)->findOneBy(['pass' => $pass, 'part' => 'salida', 'type' => 'signature']);
+            if (!$signatureInspection) {
+                $signatureInspection = new Inspection();
+                $signatureInspection->setPass($pass);
+                $signatureInspection->setType('signature');
+                $signatureInspection->setPart('salida');
+                $signatureInspection->setStatus('1');
+                $em->persist($signatureInspection);
+                $em->flush(); // Flush to get ID
+            }
 
             if (!empty($data['signature_conductor'])) {
-                $path = $signatureDir . 'conductor_salida_' . $inspection->getId() . '.png';
+                $path = $signatureDir . 'conductor_salida_' . $signatureInspection->getId() . '.png';
                 $this->saveBase64Image($data['signature_conductor'], $path);
-                $inspection->setSignatureConductor('/uploads/signatures/conductor_salida_' . $inspection->getId() . '.png');
+                $signatureInspection->setSignatureConductor('/uploads/signatures/' . basename($path));
             }
 
             if (!empty($data['signature_approver'])) {
-                $path = $signatureDir . 'approver_salida_' . $inspection->getId() . '.png';
+                $path = $signatureDir . 'approver_salida_' . $signatureInspection->getId() . '.png';
                 $this->saveBase64Image($data['signature_approver'], $path);
-                $inspection->setSignatureApprover('/uploads/signatures/approver_salida_' . $inspection->getId() . '.png');
+                $signatureInspection->setSignatureApprover('/uploads/signatures/' . basename($path));
             }
-            $em->persist($inspection);
+            $em->persist($signatureInspection);
         }
 
         $em->flush();
 
-        return new JsonResponse(['success' => true, 'message' => 'Salida registrada correctamente', 'pass_id' => $pass->getId()]);
+        return new JsonResponse(['success' => true, 'message' => 'Salida registrada/actualizada correctamente', 'pass_id' => $pass->getId()]);
     }
 
     #[Route('/api/pass/entrada', name: 'api_pass_entrada', methods: ['POST'])]
@@ -108,7 +122,7 @@ class PassController extends AbstractController
         }
 
         $pass->setEndDate(isset($data['end_date']) ? new \DateTime($data['end_date']) : new \DateTime());
-        $pass->setMileage($data['mileage'] ?? $pass->getMileage());
+        $pass->setArrivalMileage($data['mileage'] ?? $pass->getArrivalMileage());
         $pass->setFuel($data['fuel'] ?? $pass->getFuel());
         $pass->setArrivalComment($data['arrival_comment'] ?? null);
         $pass->setUpdatedAt(new \DateTimeImmutable());
@@ -135,31 +149,34 @@ class PassController extends AbstractController
 
                     $photoPath = $photoDir . $inspection->getId() . '_' . $inspectionData['part'] . '.png';
                     $this->saveBase64Image($inspectionData['photo'], $photoPath);
-                    $inspection->setPhotoUrl('/uploads/photos/' . $inspection->getId() . '_' . $inspectionData['part'] . '.png');
+                    $inspection->setPhotoUrl('/uploads/photos/' . basename($photoPath));
                     $em->persist($inspection);
                 }
             }
         }
 
         if (!empty($data['signature_conductor']) || !empty($data['signature_approver'])) {
-            $inspection = new Inspection();
-            $inspection->setPass($pass);
-            $inspection->setType('signature');
-            $inspection->setPart('entrada');
-            $inspection->setStatus('1');
-            $em->persist($inspection);
-            $em->flush();
+            $inspection = $em->getRepository(Inspection::class)->findOneBy(['pass' => $pass, 'part' => 'entrada', 'type' => 'signature']);
+            if (!$inspection) {
+                $inspection = new Inspection();
+                $inspection->setPass($pass);
+                $inspection->setType('signature');
+                $inspection->setPart('entrada');
+                $inspection->setStatus('1');
+                $em->persist($inspection);
+                $em->flush();
+            }
 
             if (!empty($data['signature_conductor'])) {
                 $path = $signatureDir . 'conductor_entrada_' . $inspection->getId() . '.png';
                 $this->saveBase64Image($data['signature_conductor'], $path);
-                $inspection->setSignatureConductor('/uploads/signatures/conductor_entrada_' . $inspection->getId() . '.png');
+                $inspection->setSignatureConductor('/uploads/signatures/' . basename($path));
             }
 
             if (!empty($data['signature_approver'])) {
                 $path = $signatureDir . 'approver_entrada_' . $inspection->getId() . '.png';
                 $this->saveBase64Image($data['signature_approver'], $path);
-                $inspection->setSignatureApprover('/uploads/signatures/approver_entrada_' . $inspection->getId() . '.png');
+                $inspection->setSignatureApprover('/uploads/signatures/' . basename($path));
             }
             $em->persist($inspection);
         }

@@ -2,11 +2,14 @@
 
 namespace App\Entity;
 
+
+use App\Entity\Users;
 use App\Repository\LogActionRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: LogActionRepository::class)]
+#[ORM\HasLifecycleCallbacks] // Añadido para gestionar el nombre de usuario automáticamente
 class LogAction
 {
     #[ORM\Id]
@@ -14,8 +17,14 @@ class LogAction
     #[ORM\Column]
     private ?int $id = null;
 
-    #[ORM\Column(type: "integer", nullable: true)]
-    private ?int $userId = null;
+    // 1. RELACIÓN DE OBJETO: Apunta a la entidad completa Users
+    #[ORM\ManyToOne(targetEntity: Users::class)]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?Users $user = null;
+
+    // 2. CAMPO STRING: Almacena el nombre de usuario (la "fila" que pediste)
+    #[ORM\Column(length: 50)]
+    private ?string $userName = null; // Nuevo campo para guardar el nombre de usuario como string
 
     #[ORM\Column(length: 255)]
     private ?string $action = null;
@@ -23,8 +32,7 @@ class LogAction
     #[ORM\Column(length: 255)]
     private ?string $tableName = null;
 
-    #[ORM\Column(type: "string", length: 255, nullable: true)]
-    private ?string $recordId = null;
+    // --- El campo recordId fue ELIMINADO ---
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
@@ -32,19 +40,49 @@ class LogAction
     #[ORM\Column]
     private ?\DateTimeImmutable $createdAt = null;
 
+    // --- Función para rellenar automáticamente el userName al guardar ---
+    #[ORM\PrePersist]
+    public function setUserNameOnPrePersist(): void
+    {
+        if ($this->user && !$this->userName) {
+            // Asume que el método en la entidad Users para obtener el nombre de usuario es getUser()
+            $this->userName = $this->user->getUser();
+        }
+        if ($this->createdAt === null) {
+            $this->createdAt = new \DateTimeImmutable();
+        }
+    }
+
+    // --- Getters y Setters ---
+
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getUserId(): ?int
+    public function getUser(): ?Users
     {
-        return $this->userId;
+        return $this->user;
     }
 
-    public function setUserId(?int $userId): self
+    public function setUser(?Users $user): self
     {
-        $this->userId = $userId ?? 0;
+        $this->user = $user;
+        // Opcional: Si estableces el usuario, también puedes establecer el nombre de usuario aquí
+        if ($user) {
+            $this->userName = $user->getUser();
+        }
+        return $this;
+    }
+
+    public function getUserName(): ?string // Nuevo getter para el string de usuario
+    {
+        return $this->userName;
+    }
+
+    public function setUserName(string $userName): static // Nuevo setter para el string de usuario
+    {
+        $this->userName = $userName;
         return $this;
     }
 
@@ -69,17 +107,6 @@ class LogAction
     {
         $this->tableName = $tableName;
 
-        return $this;
-    }
-
-    public function getRecordId(): ?string
-    {
-        return $this->recordId;
-    }
-
-    public function setRecordId(?string $recordId): self
-    {
-        $this->recordId = $recordId ?? 'N/A';
         return $this;
     }
 

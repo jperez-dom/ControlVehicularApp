@@ -12,20 +12,27 @@ services:
 
     App\:
         resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
 
-    # Handler para guardar logs en la base de datos
-    App\Monolog\DatabaseHandler:
+    # Configuración explícita para PdfGeneratorService
+    App\Service\PdfGeneratorService:
         arguments:
-            - '@doctrine.orm.entity_manager'
-        tags:
-            - { name: monolog.handler, channel: audit, handler: audit }
+            $projectDir: '%kernel.project_dir%'
 
     # Listener para auditar acciones en Doctrine (INSERT/UPDATE/DELETE)
+    # Configuración 100% explícita para evitar errores de autowiring
     App\EventListener\DoctrineAuditSubscriber:
         arguments:
-            $logger: '@monolog.logger.audit'
+            - '@Doctrine\ORM\EntityManagerInterface'
+            - '@Symfony\Component\HttpFoundation\RequestStack'
+            - '@Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface'
         tags:
-            - { name: doctrine.event_subscriber }
+            - { name: doctrine.event_listener, event: postPersist, method: postPersist }
+            - { name: doctrine.event_listener, event: postUpdate, method: postUpdate }
+            - { name: doctrine.event_listener, event: postRemove, method: postRemove }
 
 
     # add more service definitions when explicit configuration is needed

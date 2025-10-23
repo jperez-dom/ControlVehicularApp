@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { toast } from "sonner";
 import { motion } from 'motion/react';
-import api from "../api";
+import { authAPI } from "../api"; // Importa authAPI en lugar de api por defecto
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
 
 interface LoginProps {
@@ -64,7 +64,8 @@ export function Login({ onLogin }: LoginProps) {
         const code = otpCode.join('');
 
         try {
-            const response = await api.post("/auth/login", { code });
+            // CORREGIDO: Usar authAPI.login que guarda el user_id en localStorage
+            const response = await authAPI.login(code);
 
             if (response.data.success) {
                 toast.success("Acceso autorizado");

@@ -64,6 +64,8 @@ export const comissionsAPI = {
     create: (data: ComissionCreateRequest) =>
         api.post<ComissionCreateResponse>("/comissions", data),
     delete: (folio: string) => api.delete(`/comissions/folio/${folio}`),
+    updatePass: (folio: string, data: any) => api.put(`/comissions/folio/${folio}/pass`, data),
+    send: (folio: string, email: string) => api.post(`/comissions/folio/${folio}/send`, { email }),
 };
 
 // Pass API
@@ -71,6 +73,11 @@ export const passAPI = {
     salida: (data: PassSalidaRequest) => api.post<PassResponse>("/pass/salida", data),
     entrada: (data: PassEntradaRequest) => api.post<PassResponse>("/pass/entrada", data),
     getDetails: (passId: number) => api.get<PassDetailsResponse>(`/pass/${passId}`),
+};
+
+// Inspection API
+export const inspectionsAPI = {
+    delete: (id: number) => api.delete(`/inspections/${id}`),
 };
 
 // Place API

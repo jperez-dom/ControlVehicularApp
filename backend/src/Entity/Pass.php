@@ -18,8 +18,11 @@ class Pass
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(type: Types::INTEGER)]
-    private ?int $mileage = null;
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $departureMileage = null;
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $arrivalMileage = null;
 
     #[ORM\Column(length: 50)]
     private ?string $fuel = null;
@@ -76,8 +79,10 @@ class Pass
     }
 
     public function getId(): ?int { return $this->id; }
-    public function getMileage(): ?int { return $this->mileage; }
-    public function setMileage(int $mileage): static { $this->mileage = $mileage; return $this; }
+    public function getDepartureMileage(): ?int { return $this->departureMileage; }
+    public function setDepartureMileage(?int $departureMileage): static { $this->departureMileage = $departureMileage; return $this; }
+    public function getArrivalMileage(): ?int { return $this->arrivalMileage; }
+    public function setArrivalMileage(?int $arrivalMileage): static { $this->arrivalMileage = $arrivalMileage; return $this; }
     public function getFuel(): ?string { return $this->fuel; }
     public function setFuel(string $fuel): static { $this->fuel = $fuel; return $this; }
     public function getDepartureComment(): ?string { return $this->departureComment; }
