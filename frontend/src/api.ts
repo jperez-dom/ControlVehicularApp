@@ -3,6 +3,7 @@ import type {
     LoginResponse,
     Vehicle,
     Driver,
+    Plate,
     Comission,
     ComissionCreateRequest,
     ComissionCreateResponse,
@@ -15,13 +16,14 @@ import type {
 } from "./types/api";
 
 const api = axios.create({
-    baseURL: "http://localhost:8000/api", // backend Symfony
+    baseURL: "/api", // <-- Correcto para usar el proxy de Vite
     headers: {
         "Content-Type": "application/json",
     },
 });
 
-// Interceptor para mandar el id del usuario en cada petición
+// ------- INTERCEPTOR -------
+// Manda el user_id automáticamente si existe en localStorage
 api.interceptors.request.use((config) => {
     const userId = localStorage.getItem("user_id");
     if (userId) {
@@ -30,35 +32,34 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-// Auth API
+// -------- AUTH API ----------
 export const authAPI = {
     login: async (code: string) => {
         const response = await api.post<LoginResponse>("/auth/login", { code });
-
-        // Guarda el user_id para Monolog
         if (response.data?.user?.id) {
             localStorage.setItem("user_id", response.data.user.id.toString());
         }
-
         return response;
     }
 };
 
-// Vehicle API
+// -------- VEHICLES ----------
 export const vehiclesAPI = {
     list: () => api.get<Vehicle[]>("/vehicles"),
-    create: (data: { brand: string; model: string; plate?: string; year?: number; color?: string; internal_number?: number }) =>
+    create: (data: { brand: string; model: string; plate: string; year?: number; color?: string; internal_number?: number }) =>
         api.post("/vehicles", data),
+    delete: (id: number) => api.delete(`/vehicles/${id}`),
 };
 
-// Driver API
+// -------- DRIVERS ----------
 export const driversAPI = {
     list: () => api.get<Driver[]>("/drivers"),
     create: (data: { name: string; position: string; phone?: string; email?: string }) =>
         api.post("/drivers", data),
+    delete: (id: number) => api.delete(`/drivers/${id}`),
 };
 
-// Comission API
+// -------- COMISSIONS ----------
 export const comissionsAPI = {
     list: () => api.get<Comission[]>("/comissions"),
     create: (data: ComissionCreateRequest) =>
@@ -66,21 +67,22 @@ export const comissionsAPI = {
     delete: (folio: string) => api.delete(`/comissions/folio/${folio}`),
     updatePass: (folio: string, data: any) => api.put(`/comissions/folio/${folio}/pass`, data),
     send: (folio: string, email: string) => api.post(`/comissions/folio/${folio}/send`, { email }),
+    downloadPdf: (folio: string) => api.get(`/comissions/folio/${folio}/download-pdf`, { responseType: 'blob' }),
 };
 
-// Pass API
+// -------- PASSES ----------
 export const passAPI = {
     salida: (data: PassSalidaRequest) => api.post<PassResponse>("/pass/salida", data),
     entrada: (data: PassEntradaRequest) => api.post<PassResponse>("/pass/entrada", data),
     getDetails: (passId: number) => api.get<PassDetailsResponse>(`/pass/${passId}`),
 };
 
-// Inspection API
+// -------- INSPECTIONS ----------
 export const inspectionsAPI = {
     delete: (id: number) => api.delete(`/inspections/${id}`),
 };
 
-// Place API
+// -------- DESTINOS ----------
 export const placesAPI = {
     create: (data: PlaceCreateRequest) => api.post<PlaceCreateResponse>("/places", data),
 };

@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { X } from 'lucide-react';
 import { vehiclesAPI } from '../api';
 import { toast } from "sonner";
 
@@ -14,7 +13,8 @@ interface Vehicle {
   modelo?: string;
   color?: string;
   año?: string;
-  id?: number;
+  id: number;
+  placa?: string;
 }
 
 interface AddVehicleModalProps {
@@ -27,163 +27,155 @@ export function AddVehicleModal({ open, onOpenChange, onVehicleAdded }: AddVehic
   const [formData, setFormData] = useState({
     marca: '',
     modelo: '',
+    plate: '',
     color: '',
-    año: ''
+    año: '',
+    internal_number: ''
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({
+    marca: false,
+    modelo: false,
+    plate: false,
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        marca: '',
+        modelo: '',
+        plate: '',
+        año: '',
+        color: '',
+        internal_number: ''
+      });
+      setErrors({ marca: false, modelo: false, plate: false });
+    }
+  }, [open]);
 
-    if (!formData.marca.trim() || !formData.modelo.trim()) {
+  const updateFormData = (field: keyof typeof formData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateForm = () => {
+    const newErrors = {
+      marca: !formData.marca.trim(),
+      modelo: !formData.modelo.trim(),
+      plate: !formData.plate.trim(),
+    };
+    setErrors(newErrors);
+    return !Object.values(newErrors).some(Boolean);
+  };
+
+
+  const handleSave = async () => {
+    if (!validateForm()) {
+      toast.error('Por favor completa todos los campos obligatorios');
       return;
     }
 
-    setIsLoading(true);
-
     try {
-      const vehicleName = `${formData.marca} ${formData.modelo}`.trim();
-
-      // Guardar en la BD
-      const response = await vehiclesAPI.create({
+      const payload = {
         brand: formData.marca,
         model: formData.modelo,
-        plate: '',
+        plate: formData.plate,
         year: formData.año ? parseInt(formData.año) : undefined,
-        color: formData.color || ''
+        color: formData.color || undefined,
+        internal_number: formData.internal_number ? parseInt(formData.internal_number) : undefined,
+      };
+      
+      const response = await vehiclesAPI.create({
+        ...payload
       });
 
-      if (response.data.success) {
-        const vehicleValue = vehicleName.toLowerCase().replace(/\s+/g, '-');
+      const newVehicle: Vehicle = {
+        id: response.data.id,
+        value: response.data.plate,
+        label: `${response.data.brand} ${response.data.model} (${response.data.plate})`,
+        placa: response.data.plate,
+      };
 
-        const newVehicle: Vehicle = {
-          id: response.data.vehicle.id,
-          value: vehicleValue,
-          label: vehicleName,
-          marca: formData.marca,
-          modelo: formData.modelo,
-          color: formData.color,
-          año: formData.año
-        };
-
-        onVehicleAdded(newVehicle);
-        toast.success('Vehículo guardado en la base de datos');
-
-        // Reset form
-        setFormData({
-          marca: '',
-          modelo: '',
-          color: '',
-          año: ''
-        });
-
-        onOpenChange(false);
-      }
+      onVehicleAdded(newVehicle);
+      toast.success('Vehículo agregado correctamente');
+      onOpenChange(false);
     } catch (error) {
-      console.error('Error al crear vehículo:', error);
+      console.error('Error al guardar vehículo:', error);
       toast.error('Error al guardar el vehículo');
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  const handleCancel = () => {
-    setFormData({
-      marca: '',
-      modelo: '',
-      color: '',
-      año: ''
-    });
-    onOpenChange(false);
-  };
-
-  const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setFormData(prev => ({ ...prev, año: value }));
-  };
-
-  const isFormValid = formData.marca.trim() && formData.modelo.trim();
-
   return (
     open && (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md">
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+        <DialogContent className="max-w-[360px] mx-auto p-0">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>Nuevo vehículo</DialogTitle>
-          </div>
+          <DialogTitle>Añadir Vehículo</DialogTitle>
           <DialogDescription>
-            Agrega un nuevo vehículo al sistema
+            Ingresa los detalles del nuevo vehículo.
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="p-4 space-y-4 modal-scroll-content">
           <div>
-            <Label htmlFor="marca">Marca *</Label>
+            <Label className={errors.marca ? "text-destructive" : ""}>Marca *</Label>
             <Input
               id="marca"
               value={formData.marca}
-              onChange={(e) => setFormData(prev => ({ ...prev, marca: e.target.value }))}
-              placeholder="Ej: Toyota, Ford, Nissan"
+              onChange={(e) => updateFormData('marca', e.target.value)}
+              placeholder="Ej. Nissan"
               className="mt-1"
-              autoFocus
             />
+            {errors.marca && <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>}
           </div>
 
           <div>
-            <Label htmlFor="modelo">Modelo *</Label>
+            <Label className={errors.modelo ? "text-destructive" : ""}>Modelo *</Label>
             <Input
               id="modelo"
               value={formData.modelo}
-              onChange={(e) => setFormData(prev => ({ ...prev, modelo: e.target.value }))}
-              placeholder="Ej: Hilux, F-150, Sentra"
+              onChange={(e) => updateFormData('modelo', e.target.value)}
+              placeholder="Ej. Versa"
+              className="mt-1"
+            />
+            {errors.modelo && <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>}
+          </div>
+          <div>
+            <Label className={errors.plate ? "text-destructive" : ""}>Placa *</Label>
+            <Input id="plate" value={formData.plate} onChange={(e) => updateFormData('plate', e.target.value)} placeholder="Ej. ABC-123-D" className="mt-1" />
+            {errors.plate && <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>}
+          </div>
+
+          <div>
+            <Label>Año</Label>
+            <Input
+              id="año"
+              type="number"
+              value={formData.año}
+              onChange={(e) => updateFormData('año', e.target.value)}
+              placeholder="Ej. 2023"
               className="mt-1"
             />
           </div>
 
           <div>
-            <Label htmlFor="color">Color</Label>
+            <Label>Color</Label>
             <Input
               id="color"
               value={formData.color}
-              onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
-              placeholder="Ej: Blanco, Rojo, Azul"
+              onChange={(e) => updateFormData('color', e.target.value)}
+              placeholder="Ej. Blanco"
               className="mt-1"
             />
           </div>
-
           <div>
-            <Label htmlFor="año">Año</Label>
-            <Input
-              id="año"
-              value={formData.año}
-              onChange={handleYearChange}
-              placeholder="Ej: 2023"
-              className="mt-1"
-              maxLength={4}
-              inputMode="numeric"
-            />
+            <Label>Número Interno</Label>
+            <Input id="internal_number" type="number" value={formData.internal_number} onChange={(e) => updateFormData('internal_number', e.target.value)} placeholder="Ej. 101" className="mt-1" />
           </div>
+        </div>
 
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleCancel}
-              className="flex-1"
-              disabled={isLoading}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={!isFormValid || isLoading}
-              className="flex-1"
-            >
-              {isLoading ? 'Guardando...' : 'Guardar'}
-            </Button>
-          </div>
-          </form>
+        <div className="p-4 pt-0 flex gap-3">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">Cancelar</Button>
+          <Button onClick={handleSave} className="flex-1">Guardar</Button>
+        </div>
         </DialogContent>
       </Dialog>
     )

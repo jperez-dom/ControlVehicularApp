@@ -1156,6 +1156,10 @@
     overflow-y: auto;
   }
 
+  .overscroll-contain {
+    overscroll-behavior: contain;
+  }
+
   .rounded-full {
     border-radius: 3.40282e38px;
   }
@@ -1254,6 +1258,10 @@
 
   .border-orange-200 {
     border-color: var(--color-orange-200);
+  }
+
+  .border-red-500 {
+    border-color: var(--color-red-500);
   }
 
   .border-transparent {
@@ -1761,6 +1769,10 @@
     color: var(--primary-foreground);
   }
 
+  .text-red-500 {
+    color: var(--color-red-500);
+  }
+
   .text-secondary-foreground {
     color: var(--secondary-foreground);
   }
@@ -1849,6 +1861,10 @@
 
   .ring-green-500 {
     --tw-ring-color: var(--color-green-500);
+  }
+
+  .ring-red-500 {
+    --tw-ring-color: var(--color-red-500);
   }
 
   .ring-offset-background {

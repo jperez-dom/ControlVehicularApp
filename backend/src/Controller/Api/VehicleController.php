@@ -69,4 +69,21 @@ class VehicleController extends AbstractController
             ]
         ], 201);
     }
+
+    #[Route('/api/vehicles/{id}', name: 'api_vehicle_delete', methods: ['DELETE'])]
+    public function delete(int $id, EntityManagerInterface $em): JsonResponse
+    {
+        $vehicle = $em->getRepository(Vehicle::class)->find($id);
+
+        if (!$vehicle) {
+            return new JsonResponse(['success' => false, 'message' => 'Vehículo no encontrado'], 404);
+        }
+
+        $vehicle->setStatus('0');
+        $vehicle->setUpdatedAt(new \DateTimeImmutable());
+
+        $em->flush();
+
+        return new JsonResponse(['success' => true, 'message' => 'Vehículo eliminado correctamente']);
+    }
 }

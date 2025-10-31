@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { ArrowLeft, CheckCircle, Mail, Pencil } from 'lucide-react';
-import { PhotoGalleryViewer } from './PhotoGalleryViewer';
+import { ArrowLeft, CheckCircle, Mail, Pencil, Download } from 'lucide-react';
 import { toast } from "sonner";
 import { comissionsAPI } from '../api';
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
@@ -13,16 +11,6 @@ interface Destino {
     estado: string;
     ciudad: string;
     comentario: string;
-}
-
-interface InspectionData {
-    id: number;
-    type: 'photo' | 'signature';
-    part: string;
-    comment: string | null;
-    photo_url: string | null;
-    signature_conductor_url: string | null;
-    signature_approver_url: string | null;
 }
 
 interface PassDetails {
@@ -36,7 +24,6 @@ interface PassDetails {
     endDate: string | null;
     status: string;
     comission_folio: string | null;
-    inspections: InspectionData[];
 }
 
 interface FichaGuardada {
@@ -75,47 +62,24 @@ export function DetalleFicha({
     getVehicleName,
     refreshFichas
 }: DetalleFichaProps) {
-    const [showEnvioModal, setShowEnvioModal] = useState(false);
-    const [emailDestino, setEmailDestino] = useState('');
-    const [galleryViewer, setGalleryViewer] = useState({ open: false, initialIndex: 0 });
 
-    const handleImageClick = (photoId: string) => {
-        const photos = (ficha.passDetails?.inspections || [])
-            .filter(insp => insp.type === 'photo')
-            .map(insp => ({ id: insp.id.toString(), url: `http://localhost:8000${insp.photo_url}`, label: insp.comment || getImageDisplayName(insp.part) }));
-
-        const initialIndex = photos.findIndex(p => p.id === photoId);
-        if (initialIndex !== -1) {
-            setGalleryViewer({ open: true, initialIndex });
-        }
-    };
-
-    const handleOpenEnvioModal = () => setShowEnvioModal(true);
-
-    const handleEnviarFicha = async () => {
-        if (!emailDestino.trim() || !/\S+@\S+\.\S+/.test(emailDestino)) {
-            return toast.error('Por favor ingresa un email válido');
-        }
+    const handleDescargarFicha = async () => {
         try {
-            const response = await comissionsAPI.send(ficha.folio, emailDestino);
-            if (response.data.success) {
-                toast.success('Ficha enviada correctamente', { description: `La ficha ${ficha.folio} se ha enviado a ${emailDestino}` });
-            } else {
-                throw new Error(response.data.message || 'Error en la respuesta de la API');
-            }
+            const response = await comissionsAPI.downloadPdf(ficha.folio);
+            const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `reporte-comision-${ficha.folio}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Ficha descargada correctamente');
         } catch (error) {
-            console.error('Error al enviar la ficha:', error);
-            toast.error('Error al enviar la ficha');
-        } finally {
-            setShowEnvioModal(false);
-            setEmailDestino('');
+            console.error('Error al descargar la ficha:', error);
+            toast.error('Error al descargar la ficha');
         }
     };
-
-    const getImageDisplayName = (part: string) => ({
-        'front': 'Vista frontal', 'right_side': 'Lateral derecho', 'left_side': 'Lateral izquierdo',
-        'back': 'Vista posterior', 'mileage': 'Odómetro', 'interior': 'Interior', 'mileage_entry': 'Odómetro (Entrada)'
-    }[part.replace('_entry', '')] || part);
 
     const hasSalida = ficha.estado === 'con-salida' || ficha.estado === 'completada';
     const hasEntrada = ficha.estado === 'completada';
@@ -124,7 +88,7 @@ export function DetalleFicha({
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <div className="h-12 bg-black"></div>
-            <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto" /></div></div>
+            <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto object-contain" /></div></div>
             <div className="bg-white px-4 py-4 border-b">
                 <div className="flex items-center gap-3">
                     <Button variant="ghost" size="sm" onClick={onBack} className="p-2 h-auto"><ArrowLeft className="h-5 w-5" /></Button>
@@ -243,7 +207,7 @@ export function DetalleFicha({
             <div className="fixed bottom-0 left-0 right-0 bg-white border-t px-4 py-4 shadow-lg">
                 <div className="max-w-[360px] mx-auto">
                     {ficha.estado === 'completada' ? (
-                        <Button className="w-full h-12" onClick={handleOpenEnvioModal}><Mail className="h-4 w-4 mr-2" />Enviar</Button>
+                        <Button className="w-full h-12" onClick={handleDescargarFicha}><Download className="h-4 w-4 mr-2" />Descargar Ficha</Button>
                     ) : (
                         <div className="grid grid-cols-2 gap-3">
                             <Button id="abrirSalidaBtn" variant="outline" onClick={onGoToSalida} disabled={hasSalida}>Salida</Button>
@@ -252,49 +216,6 @@ export function DetalleFicha({
                     )}
                 </div>
             </div>
-
-            {/* MODAL DE ENVÍO DE FICHA */}
-            <Dialog open={showEnvioModal} onOpenChange={setShowEnvioModal}>
-                <DialogContent className="max-w-[340px] rounded-lg">
-                    <DialogHeader>
-                        <DialogTitle>Enviar Ficha {ficha.folio}</DialogTitle>
-                        <DialogDescription>
-                            Ingresa el correo electrónico para enviar el reporte final de la comisión.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-2">
-                        <input
-                            type="email"
-                            placeholder="ejemplo@dominio.com"
-                            value={emailDestino}
-                            onChange={(e) => setEmailDestino(e.target.value)}
-                            className="w-full p-2 border rounded-md"
-                        />
-
-                        <Button
-                            className="w-full"
-                            onClick={handleEnviarFicha}
-                            disabled={!emailDestino || !/\S+@\S+\.\S+/.test(emailDestino)} // Deshabilita si email inválido
-                        >
-                            Confirmar Envío
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            <PhotoGalleryViewer
-                photos={(ficha.passDetails?.inspections || [])
-                    .filter(i => i.type === 'photo')
-                    .map(i => ({
-                        id: i.id.toString(),
-                        url: `http://localhost:8000${i.photo_url}`,
-                        label: getImageDisplayName(i.part)
-                    }))
-                }
-                initialIndex={galleryViewer.initialIndex}
-                open={galleryViewer.open}
-                onOpenChange={(open) => setGalleryViewer({ ...galleryViewer, open })}
-            />
         </div>
     );
 }

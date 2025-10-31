@@ -56,15 +56,14 @@ export default defineConfig({
     },
     server: {
         port: 3000,
-        open: true,
-        // AÑADIR ESTE BLOQUE
+        open: false,
+        host: true,
+        allowedHosts: ['.ngrok-free.dev'],
         proxy: {
-            // Redirige cualquier llamada que comience con /api (ej: /api/pass/salida)
             '/api': {
-                target: 'http://localhost:8000', // Al puerto donde corre Symfony
-                changeOrigin: true, // Necesario para peticiones entre diferentes orígenes
-                secure: false, // Puedes dejarlo en false en desarrollo
-                // No necesitamos reescribir la ruta porque el path ya incluye /api
+                target: 'http://backend:8000', // <-- ¡LA SOLUCIÓN CORRECTA!
+                changeOrigin: true,
+                secure: false,
             },
         },
     },

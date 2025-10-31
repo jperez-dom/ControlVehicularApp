@@ -15,10 +15,10 @@
         th { background:#f6f6f6; text-align:left; }
         .section h3 { margin: 10px 0 6px; font-size: 14px; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .photo { border:1px solid #ddd; padding:4px; text-align:center; height: 180px; }
         .photo img { max-height: 150px; max-width: 100%; }
-        .sign { height: 110px; border:1px dashed #bbb; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:6px; }
+        .sign { height: 120px; border:1px dashed #bbb; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:6px; }
         .foot { margin-top: 18px; font-size: 10px; color:#666; text-align:center; }
     </style>
 </head>
@@ -89,15 +89,29 @@
 </div>
 
 <div class="section">
-    <h3>Firmas</h3>
+    <h3>Firmas de Salida</h3>
     <div class="grid-2">
         <div class="sign">
-            <div><strong>Conductor</strong></div>
-            {% if signatures.driver %}<img src="{{ signatures.driver }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+            <div><strong>Conductor (Salida)</strong></div>
+            {% if signatures.driver_salida %}<img src="{{ signatures.driver_salida }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
         </div>
         <div class="sign">
-            <div><strong>Aprobador</strong></div>
-            {% if signatures.approver %}<img src="{{ signatures.approver }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+            <div><strong>Aprobador (Salida)</strong></div>
+            {% if signatures.approver_salida %}<img src="{{ signatures.approver_salida }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h3>Firmas de Entrada</h3>
+    <div class="grid-2">
+        <div class="sign">
+            <div><strong>Conductor (Entrada)</strong></div>
+            {% if signatures.driver_entrada %}<img src="{{ signatures.driver_entrada }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
+        </div>
+        <div class="sign">
+            <div><strong>Aprobador (Entrada)</strong></div>
+            {% if signatures.approver_entrada %}<img src="{{ signatures.approver_entrada }}" style="max-height:80px;"/>{% else %}<div>—</div>{% endif %}
         </div>
     </div>
 </div>

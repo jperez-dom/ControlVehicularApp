@@ -59,57 +59,52 @@ export function BottomSheetSelect({
         {trigger || defaultTrigger}
       </PopoverTrigger>
       <PopoverContent 
-        className="w-[--radix-popover-trigger-width] p-0" 
+        className="w-[--radix-popover-trigger-width] p-0"
         align="start"
-        style={{ animationDuration: '0ms', animationDelay: '0ms' }}
         sideOffset={4}
+        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex flex-col max-h-[400px]">
-          <div className="p-3 border-b flex-shrink-0">
-            <h3 className="font-medium text-sm text-foreground">{placeholder}</h3>
+        <div className="p-3 border-b sticky top-0 bg-background z-10">
+          <h3 className="font-medium text-sm text-foreground">{placeholder}</h3>
+        </div>
+        
+        {searchable && (
+          <div className="p-3 border-b sticky top-[49px] bg-background z-10">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-9"
+              />
+            </div>
           </div>
+        )}
+        
+        <div className="p-1">
+          {filteredOptions.map((option) => (
+            <div
+              key={option.value}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSelect(option.value) }}
+              className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between transition-none cursor-pointer rounded-md"
+              onClick={() => handleSelect(option.value)}
+            >
+              <span className="text-foreground">{option.label}</span>
+              {value === option.value && (
+                <Check className="h-4 w-4 text-blue-600" />
+              )}
+            </div>
+          ))}
           
-          {searchable && (
-            <div className="p-3 border-b flex-shrink-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-9"
-                />
-              </div>
+          {filteredOptions.length === 0 && (
+            <div className="text-center py-4 text-gray-500 text-sm">
+              No se encontraron resultados
             </div>
           )}
-          
-          <div 
-            className="overflow-y-auto flex-1" 
-            style={{ 
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none'
-            }}
-          >
-            {filteredOptions.map((option) => (
-              <button
-                key={option.value}
-                className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between transition-none"
-                onClick={() => handleSelect(option.value)}
-              >
-                <span className="text-foreground">{option.label}</span>
-                {value === option.value && (
-                  <Check className="h-4 w-4 text-blue-600" />
-                )}
-              </button>
-            ))}
-            
-            {filteredOptions.length === 0 && (
-              <div className="text-center py-4 text-gray-500 text-sm">
-                No se encontraron resultados
-              </div>
-            )}
-          </div>
         </div>
       </PopoverContent>
     </Popover>
@@ -138,7 +133,6 @@ export function BottomSheetDatePicker({
     if (mode === 'date') {
       return new Date(val).toLocaleDateString('es-MX');
     } else {
-      // Para time, mostrar en formato HH:MM
       return val;
     }
   };
@@ -147,7 +141,6 @@ export function BottomSheetDatePicker({
     onValueChange(e.target.value);
   };
 
-  // Para modo time, usar selector de ruedas
   if (mode === 'time') {
     const currentTime = value || '12:00';
     const [hours, minutes] = currentTime.split(':').map(Number);
@@ -176,7 +169,6 @@ export function BottomSheetDatePicker({
             <h3 className="font-medium text-sm mb-4">{placeholder}</h3>
             
             <div className="flex items-center justify-center gap-4">
-              {/* Selector de Horas */}
               <div className="flex flex-col items-center">
                 <div className="text-xs text-gray-500 mb-2">Horas</div>
                 <div 
@@ -204,7 +196,6 @@ export function BottomSheetDatePicker({
 
               <div className="text-2xl font-bold">:</div>
 
-              {/* Selector de Minutos */}
               <div className="flex flex-col items-center">
                 <div className="text-xs text-gray-500 mb-2">Minutos</div>
                 <div 
@@ -238,7 +229,6 @@ export function BottomSheetDatePicker({
     );
   }
 
-  // Para modo date, usar input nativo
   return (
     <div className="relative">
       <Button

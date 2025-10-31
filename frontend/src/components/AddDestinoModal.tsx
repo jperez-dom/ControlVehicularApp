@@ -5,7 +5,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { BottomSheetSelect } from './BottomSheet';
 import { X } from 'lucide-react';
-import { toast } from "sonner";
+import { toast } from "sonner@2.0.3";
 
 interface Destino {
   id: string;
@@ -141,10 +141,9 @@ export function AddDestinoModal({
 
   return (
     open && (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         <DialogContent 
           className="max-w-[360px] mx-auto p-0"
-          onInteractOutside={(e) => e.preventDefault()}
         >
         {/* Header */}
         <DialogHeader className="p-4 pb-0">

@@ -18,6 +18,8 @@ interface InspectionData {
     part: string;
     comment: string | null;
     photo_url: string | null;
+    signature_conductor_url?: string | null;
+    signature_approver_url?: string | null;
 }
 
 interface PassDetails {
@@ -58,7 +60,17 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
             setKmEntrada(arrivalMileage?.toString() || '');
             setCombustible(parseInt(fuel, 10) || 8);
             setArrivalComment(comment_entrada || '');
-            setExistingPhotos(inspections.filter(i => i.type === 'photo' && i.part.includes('_entry')));
+
+            // Separate photos and signatures for entry
+            const photos = inspections.filter(i => i.type === 'photo' && i.part.includes('_entry'));
+            const signatures = inspections.find(i => i.type === 'signature' && i.part.includes('_entry'));
+
+            setExistingPhotos(photos);
+
+            if (signatures) {
+                if (signatures.signature_conductor_url) setFirmaConductor(signatures.signature_conductor_url);
+                if (signatures.signature_approver_url) setFirmaAprobador(signatures.signature_approver_url);
+            }
         }
     }, [ficha, isEditing]);
 
@@ -105,23 +117,34 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
     const renderPhotoInput = (key: string, label: string) => {
         const existingPhoto = existingPhotos.find(p => p.part === `${key}_entry`);
         const newPhoto = newPhotos[key];
-        const isCaptured = !!existingPhoto || !!newPhoto;
+        const photoUrl = newPhoto || existingPhoto?.photo_url;
 
         return (
             <div className="relative text-center">
                 <div
-                    onClick={() => !isCaptured && handlePhotoCapture(key, label)}
-                    className={`aspect-square w-full rounded-md border border-dashed p-2 flex flex-col items-center justify-center transition-colors cursor-pointer ${isCaptured ? 'border-green-500 bg-green-50 text-green-600' : 'border-gray-300 hover:border-gray-400 text-gray-500'}`}>
-                    <Camera className="h-5 w-5" />
-                    <span className="text-xs mt-1 leading-tight">{label}</span>
+                    onClick={() => !photoUrl && handlePhotoCapture(key, label)}
+                    className={`aspect-square w-full rounded-md border border-dashed flex items-center justify-center transition-colors overflow-hidden ${
+                        photoUrl 
+                        ? 'border-gray-300' 
+                        : 'border-gray-300 hover:border-gray-400 text-gray-500 cursor-pointer'
+                    }`}>
+                    {photoUrl ? (
+                        <img src={photoUrl} alt={label} className="w-full h-full object-cover" />
+                    ) : (
+                        <Camera className="h-4 w-4" />
+                    )}
                 </div>
-                {isCaptured && (
-                    <button
+                {photoUrl && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         type="button"
                         onClick={(e) => newPhoto ? handleDeleteNewPhoto(e, key) : handleDeleteExistingPhoto(e, existingPhoto!.id)}
-                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 h-5 w-5 flex items-center justify-center shadow-md">
-                        <X className="h-3 w-3" />
-                    </button>
+                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full h-6 w-6 hover:bg-black/75 transition-colors"
+                        aria-label={`Eliminar foto de ${label}`}
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
                 )}
             </div>
         );
@@ -130,7 +153,7 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="h-12 bg-black"></div>
-            <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto" /></div></div>
+            <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto object-contain" /></div></div>
             <div className="bg-white px-4 py-4 border-b">
                 <div className="flex items-center gap-3">
                     <Button variant="ghost" size="sm" onClick={onBack} className="p-2 h-auto"><ArrowLeft className="h-5 w-5" /></Button>
@@ -153,13 +176,31 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
 
                         <div>
                             <Label>Evidencia Fotográfica</Label>
-                            <div className="mt-2 grid grid-cols-3 gap-3">
-                                {renderPhotoInput('mileage', 'Odómetro')}
-                                {renderPhotoInput('front', 'Frontal')}
-                                {renderPhotoInput('right_side', 'Lat. Derecho')}
-                                {renderPhotoInput('left_side', 'Lat. Izquierdo')}
-                                {renderPhotoInput('back', 'Posterior')}
-                                {renderPhotoInput('interior', 'Interior')}
+                            <div className="mt-2 grid grid-cols-4 gap-2">
+                                <div className="text-center">
+                                    {renderPhotoInput('mileage', 'Odómetro')}
+                                    <p className="text-xs text-gray-600 mt-1">Odómetro</p>
+                                </div>
+                                <div className="text-center">
+                                    {renderPhotoInput('front', 'Frontal')}
+                                    <p className="text-xs text-gray-600 mt-1">Frontal</p>
+                                </div>
+                                <div className="text-center">
+                                    {renderPhotoInput('right_side', 'Lat. Derecho')}
+                                    <p className="text-xs text-gray-600 mt-1">Lat. Der.</p>
+                                </div>
+                                <div className="text-center">
+                                    {renderPhotoInput('left_side', 'Lat. Izquierdo')}
+                                    <p className="text-xs text-gray-600 mt-1">Lat. Izq.</p>
+                                </div>
+                                <div className="text-center">
+                                    {renderPhotoInput('back', 'Posterior')}
+                                    <p className="text-xs text-gray-600 mt-1">Posterior</p>
+                                </div>
+                                <div className="text-center">
+                                    {renderPhotoInput('interior', 'Interior')}
+                                    <p className="text-xs text-gray-600 mt-1">Interior</p>
+                                </div>
                             </div>
                         </div>
 
@@ -168,18 +209,16 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
                             <Textarea id="arrival_comment" placeholder="Observaciones..." value={arrival_comment} onChange={(e) => setArrivalComment(e.target.value)} rows={3} className="mt-2 resize-none" />
                         </div>
 
-                        {!isEditing && (
-                            <div className="space-y-4 border-t pt-4">
-                                <div>
-                                    <Label>Firma del conductor</Label>
-                                    <div className="mt-2"><SignaturePad onSignatureChange={setFirmaConductor} /></div>
-                                </div>
-                                <div>
-                                    <Label>Firma de quien aprueba</Label>
-                                    <div className="mt-2"><SignaturePad onSignatureChange={setFirmaAprobador} /></div>
-                                </div>
+                        <div className="space-y-4 border-t pt-4">
+                            <div>
+                                <Label>Firma del conductor</Label>
+                                <div className="mt-2"><SignaturePad onSignatureChange={setFirmaConductor} existingSignature={firmaConductor} /></div>
                             </div>
-                        )}
+                            <div>
+                                <Label>Firma de quien aprueba</Label>
+                                <div className="mt-2"><SignaturePad onSignatureChange={setFirmaAprobador} existingSignature={firmaAprobador} /></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

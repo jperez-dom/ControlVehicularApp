@@ -92,7 +92,7 @@ export function AddDriverModal({ id, open, onOpenChange, onDriverAdded }: AddDri
 
   return (
     open && (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
         <DialogContent className="max-w-md">
         <DialogHeader>
           <div className="flex items-center justify-between">

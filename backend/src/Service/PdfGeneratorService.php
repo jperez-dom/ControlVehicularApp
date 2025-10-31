@@ -22,6 +22,8 @@ class PdfGeneratorService
         $options = new Options();
         $options->set('isHtml5ParserEnabled', true);
         $options->set('isRemoteEnabled', true);
+        // ¡ESTA ES LA LÍNEA CLAVE! Habilita el acceso al directorio público.
+        $options->set('chroot', $this->projectDir . '/public');
 
         $dompdf = new Dompdf($options);
         $html = $this->twig->render($template, $data);

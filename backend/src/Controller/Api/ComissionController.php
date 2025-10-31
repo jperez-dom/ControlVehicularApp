@@ -7,73 +7,85 @@ use App\Entity\Driver;
 use App\Entity\Inspection;
 use App\Entity\Pass;
 use App\Entity\Place;
+use App\Entity\Users;
 use App\Entity\Vehicle;
 use App\Service\PdfGeneratorService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Mailer\MailerInterface;
-use Symfony\Component\Mime\Address;
-use Symfony\Component\Mime\Email;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
 class ComissionController extends AbstractController
 {
-    // --- MÉTODO PARA EL ENVÍO DE FICHA POR CORREO ---
-    #[Route('/api/comissions/folio/{folio}/send', name: 'api_comission_send', methods: ['POST'])]
-    public function send(
+    // --- MÉTODO PARA DESCARGAR LA FICHA EN PDF ---
+    #[Route('/api/comissions/folio/{folio}/download-pdf', name: 'api_comission_download_pdf', methods: ['GET'])]
+    public function downloadPdf(
         string $folio,
-        Request $request,
         EntityManagerInterface $em,
-        PdfGeneratorService $pdf,
-        MailerInterface $mailer
-    ): JsonResponse {
-        // 1. Obtener datos del frontend (el email de destino)
-        $data = json_decode($request->getContent(), true);
-        $emailDestino = $data['email'] ?? null;
-
-        if (!$emailDestino || !filter_var($emailDestino, FILTER_VALIDATE_EMAIL)) {
-            return new JsonResponse(['success' => false, 'message' => 'El email de destino es obligatorio y debe ser válido.'], 400);
-        }
-
-        // 2. Buscar la Ficha
+        PdfGeneratorService $pdf
+    ): Response {
+        // 1. Buscar la Ficha
         $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $folio]);
 
         if (!$comission) {
             return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada con el folio proporcionado.'], 404);
         }
 
-        // 3. Lógica de Envío
+        // 2. Lógica de Generación de PDF
         try {
-            // Recopilar todos los datos para el PDF
             $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
             $destinos = $em->getRepository(Place::class)->findBy(['comission' => $comission]);
 
-            // Datos de inspecciones (fotos y firmas)
             $photos = [];
-            $signatures = ['driver' => null, 'approver' => null];
+            $signatures = [
+                'driver_salida' => null, 'approver_salida' => null,
+                'driver_entrada' => null, 'approver_entrada' => null
+            ];
+
             if ($pass) {
-                $inspections = $em->getRepository(Inspection::class)->findBy(['pass' => $pass], ['type' => 'ASC']); // Salida, luego Entrada
-                foreach ($inspections as $inspection) {
+                // 1. Get all photos
+                $photoInspections = $em->getRepository(Inspection::class)->findBy([
+                    'pass' => $pass,
+                    'type' => 'photo'
+                ]);
+                foreach ($photoInspections as $inspection) {
                     if ($inspection->getPhotoUrl()) {
                         $photos[] = [
-                            'label' => sprintf(
-                                'Inspección de %s - %s',
-                                ucfirst($inspection->getType()),
-                                $inspection->getPart()
-                            ),
+                            'label' => 'Inspección de ' . $inspection->getPart(),
                             'path' => $pdf->publicUrlToPath($inspection->getPhotoUrl()),
                         ];
                     }
-                    // Las firmas se toman de la inspección de salida
-                    if ($inspection->getType() === 'salida') {
-                        if ($inspection->getSignatureConductor()) {
-                            $signatures['driver'] = $pdf->publicUrlToPath($inspection->getSignatureConductor());
-                        }
-                        if ($inspection->getSignatureApprover()) {
-                            $signatures['approver'] = $pdf->publicUrlToPath($inspection->getSignatureApprover());
-                        }
+                }
+
+                // 2. Get Salida signature
+                $salidaSignature = $em->getRepository(Inspection::class)->findOneBy([
+                    'pass' => $pass,
+                    'type' => 'signature',
+                    'part' => 'salida'
+                ]);
+                if ($salidaSignature) {
+                    if ($salidaSignature->getSignatureConductor()) {
+                        $signatures['driver_salida'] = $pdf->publicUrlToPath($salidaSignature->getSignatureConductor());
+                    }
+                    if ($salidaSignature->getSignatureApprover()) {
+                        $signatures['approver_salida'] = $pdf->publicUrlToPath($salidaSignature->getSignatureApprover());
+                    }
+                }
+
+                // 3. Get Entrada signature
+                $entradaSignature = $em->getRepository(Inspection::class)->findOneBy([
+                    'pass' => $pass,
+                    'type' => 'signature',
+                    'part' => 'entrada'
+                ]);
+                if ($entradaSignature) {
+                    if ($entradaSignature->getSignatureConductor()) {
+                        $signatures['driver_entrada'] = $pdf->publicUrlToPath($entradaSignature->getSignatureConductor());
+                    }
+                    if ($entradaSignature->getSignatureApprover()) {
+                        $signatures['approver_entrada'] = $pdf->publicUrlToPath($entradaSignature->getSignatureApprover());
                     }
                 }
             }
@@ -91,7 +103,6 @@ class ComissionController extends AbstractController
                 ];
             }
 
-            // Determinar estado de la comisión
             $statusText = 'Creada';
             if ($pass) {
                 $statusText = 'Con Salida';
@@ -100,7 +111,6 @@ class ComissionController extends AbstractController
                 }
             }
 
-            // Datos para la plantilla Twig
             $dataForPdf = [
                 'comission' => [
                     'folio' => $comission->getFolio(),
@@ -116,37 +126,25 @@ class ComissionController extends AbstractController
                 ], $destinos),
                 'photos' => $photos,
                 'signatures' => $signatures,
-                'logoPath' => $pdf->publicUrlToPath('/img/logo-optimo.png'), // Asumiendo que el logo está aquí
+                'logoPath' => $pdf->publicUrlToPath('/img/logo-optimo.png'),
             ];
 
-            // Generar el PDF
             $pdfBinary = $pdf->renderToPdf($dataForPdf, 'pdf/comission_report.html.twig');
 
-            // Enviar el correo
-            $email = (new Email())
-                ->from(new Address('no-reply@controlvehicular.com', 'Sistema Control Vehicular'))
-                ->to($emailDestino)
-                ->subject('Reporte de Comisión: ' . $comission->getFolio())
-                ->text('Adjunto encontrarás el reporte de la comisión con folio ' . $comission->getFolio() . '.')
-                ->attach($pdfBinary, sprintf('reporte-comision-%s.pdf', $comission->getFolio()), 'application/pdf');
+            $response = new Response($pdfBinary);
+            $response->headers->set('Content-Type', 'application/pdf');
+            $response->headers->set('Content-Disposition', sprintf('attachment; filename="reporte-comision-%s.pdf"', $comission->getFolio()));
 
-            $mailer->send($email);
-
-            return new JsonResponse([
-                'success' => true,
-                'message' => "Reporte de ficha {$folio} enviado exitosamente a {$emailDestino}.",
-                'folio' => $folio
-            ]);
+            return $response;
 
         } catch (\Exception $e) {
-            // Manejo de error si falla la generación del PDF o el envío del email
             return new JsonResponse([
                 'success' => false,
-                'message' => 'Error al procesar el envío del reporte: ' . $e->getMessage()
+                'message' => 'Error al generar el PDF: ' . $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ], 500);
         }
     }
-    // --- FIN MÉTODO DE ENVÍO ---
 
     // Listar fichas con detalles para persistencia en frontend
     #[Route('/api/comissions', name: 'api_comission_list', methods: ['GET'])]
@@ -156,24 +154,17 @@ class ComissionController extends AbstractController
 
         $data = [];
         foreach ($comissions as $comission) {
-            // Find the associated Pass
             $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
 
-            // Determine the workflow state
             $estado = 'creada';
-            $salidaData = null;
-            $entradaData = null; // For UI consistency
             $passDetails = null;
 
             if ($pass) {
-                // Default end date in the app logic is '1970-01-01'
                 if ($pass->getEndDate() && $pass->getEndDate()->format('Y') > 1970) {
                     $estado = 'completada';
-                    $entradaData = ['pass_id' => $pass->getId()]; // Simplified
                 } else {
                     $estado = 'con-salida';
                 }
-                $salidaData = ['pass_id' => $pass->getId()];
 
                 $inspections = $em->getRepository(Inspection::class)->findBy(['pass' => $pass]);
                 $inspectionsData = array_map(fn($i) => [
@@ -201,7 +192,6 @@ class ComissionController extends AbstractController
                 ];
             }
 
-            // Find associated destinations (Places)
             $places = $em->getRepository(Place::class)->findBy(['comission' => $comission]);
             $destinos = array_map(fn($p) => [
                 'id' => (string)$p->getId(),
@@ -210,7 +200,6 @@ class ComissionController extends AbstractController
                 'comentario' => $p->getComment(),
             ], $places);
 
-            // Vehicle value format to match frontend's format
             $vehicle = $comission->getVehicle();
             $vehicleValue = '';
             if ($vehicle) {
@@ -223,12 +212,10 @@ class ComissionController extends AbstractController
                 'folio' => (string)$comission->getFolio(),
                 'conductorNombre' => $comission->getDriver()?->getName(),
                 'conductorCargo' => $comission->getDriver()?->getPosition(),
-                'vehiculo' => $vehicleValue, // The value 'toyota-hilux'
+                'vehiculo' => $vehicleValue,
                 'destinos' => $destinos,
                 'fechaCreacion' => $comission->getCreatedAt()?->format('Y-m-d H:i:s'),
                 'estado' => $estado,
-                'salidaData' => $salidaData,
-                'entradaData' => $entradaData, // To know if entry is complete
                 'passDetails' => $passDetails,
             ];
         }
@@ -243,21 +230,15 @@ class ComissionController extends AbstractController
         $data = json_decode($request->getContent(), true);
 
         if (!isset($data['driver_id']) || !isset($data['vehicle_id']) || !isset($data['user_id'])) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Conductor, vehículo y usuario son obligatorios'
-            ], 400);
+            return new JsonResponse(['success' => false, 'message' => 'Conductor, vehículo y usuario son obligatorios'], 400);
         }
 
         $driver = $em->getRepository(Driver::class)->find($data['driver_id']);
         $vehicle = $em->getRepository(Vehicle::class)->find($data['vehicle_id']);
-        $user = $em->getRepository(\App\Entity\Users::class)->find($data['user_id']);
+        $user = $em->getRepository(Users::class)->find($data['user_id']);
 
         if (!$driver || !$vehicle || !$user) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Conductor, vehículo o usuario no encontrado'
-            ], 404);
+            return new JsonResponse(['success' => false, 'message' => 'Conductor, vehículo o usuario no encontrado'], 404);
         }
 
         $comission = new Comission();

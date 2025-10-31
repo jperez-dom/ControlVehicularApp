@@ -5,47 +5,42 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d61c318f-a3e1-4303-aaae-15680eba4803" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/backend/.env" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/public/uploads/logo.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/src/Service/PdfGeneratorService.php" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/templates/pdf/comission_report.html.twig" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/DeleteDriverModal.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/frontend/src/components/DeleteVehicleModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/backend/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/compose.override.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/compose.override.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/composer.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/composer.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/composer.lock" beforeDir="false" afterPath="$PROJECT_DIR$/backend/composer.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/config/bundles.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/bundles.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/config/packages/doctrine.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/packages/doctrine.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/config/packages/monolog.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/packages/monolog.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/config/packages/nelmio_cors.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/packages/nelmio_cors.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/config/services.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/services.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/migrations/Version20251020225923.php" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/1_mileage.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/1_mileage.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/2_front.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/3_interior.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/3_interior.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/5_mileage_entry.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/5_mileage_entry.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/6_front_entry.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/6_front_entry.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/7_interior_entry.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/7_interior_entry.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/signatures/approver_salida_4.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/signatures/approver_salida_4.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/public/uploads/signatures/conductor_salida_4.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/signatures/conductor_salida_4.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/config/packages/security.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/packages/security.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/migrations/Version20251022220037.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/migrations/Version20251022222750.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/migrations/Version20251023014623.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/migrations/Version20251023015122.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/19_mileage_entry.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/19_mileage_entry.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/1_mileage.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/public/uploads/photos/7_mileage.png" beforeDir="false" afterPath="$PROJECT_DIR$/backend/public/uploads/photos/7_mileage.png" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/Controller/Api/ComissionController.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Controller/Api/ComissionController.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/Controller/Api/InspectionController.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Controller/Api/InspectionController.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/Controller/Api/PassController.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Controller/Api/PassController.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/Entity/LogAction.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Entity/LogAction.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/Entity/Pass.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Entity/Pass.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/Controller/Api/DriverController.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Controller/Api/DriverController.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/Controller/Api/VehicleController.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Controller/Api/VehicleController.php" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/src/EventListener/DoctrineAuditSubscriber.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/EventListener/DoctrineAuditSubscriber.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/Monolog/DatabaseHandler.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Monolog/DatabaseHandler.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/symfony.lock" beforeDir="false" afterPath="$PROJECT_DIR$/backend/symfony.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/src/Service/PdfGeneratorService.php" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/Service/PdfGeneratorService.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/templates/pdf/comission_report.html.twig" beforeDir="false" afterPath="$PROJECT_DIR$/backend/templates/pdf/comission_report.html.twig" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/Dockerfile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AddDestinoModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AddDestinoModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AddDriverModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AddDriverModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/AddVehicleModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/AddVehicleModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/BottomSheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/BottomSheet.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/DetalleFicha.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/DetalleFicha.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/FormularioEntrada.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/FormularioEntrada.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/FormularioSalida.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/FormularioSalida.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Login.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/PhotoCaptureModal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PhotoCaptureModal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/PhotoGalleryViewer.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/PhotoGalleryViewer.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/ui/dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/ui/dialog.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/index.css" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/index.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/vite.config.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -65,6 +60,9 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/backend/config/packages/security.yaml" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="Make.Settings">
     <option name="showHiddenInToolWindow" value="true" />
@@ -189,6 +187,7 @@
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultAutoModeForALLUsers.v1&quot;: &quot;true&quot;,
     &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
@@ -200,7 +199,7 @@
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
     &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/snap/phpstorm/557/plugins/javascript-plugin/jsLanguageServicesImpl/external&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/snap/phpstorm/567/plugins/javascript-plugin/jsLanguageServicesImpl/external&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
   &quot;keyToStringList&quot;: {
@@ -228,8 +227,8 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-PS-252.26830.95" />
-        <option value="bundled-php-predefined-a98d8de5180a-9b563d34894c-com.jetbrains.php.sharedIndexes-PS-252.26830.95" />
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-PS-252.27397.112" />
+        <option value="bundled-php-predefined-a98d8de5180a-b35feea871ed-com.jetbrains.php.sharedIndexes-PS-252.27397.112" />
       </set>
     </attachedChunks>
   </component>
@@ -285,7 +284,18 @@
       <workItem from="1761158031793" duration="6414000" />
       <workItem from="1761164800396" duration="3650000" />
       <workItem from="1761168482932" duration="15866000" />
-      <workItem from="1761227476829" duration="12732000" />
+      <workItem from="1761227476829" duration="12920000" />
+      <workItem from="1761241027853" duration="4147000" />
+      <workItem from="1761246613057" duration="557000" />
+      <workItem from="1761248032782" duration="495000" />
+      <workItem from="1761260241829" duration="616000" />
+      <workItem from="1761339667811" duration="1062000" />
+      <workItem from="1761585884168" duration="7597000" />
+      <workItem from="1761593803258" duration="6778000" />
+      <workItem from="1761604066870" duration="1450000" />
+      <workItem from="1761605689521" duration="2559000" />
+      <workItem from="1761611163543" duration="2035000" />
+      <workItem from="1761681010664" duration="3558000" />
     </task>
     <servers />
   </component>
@@ -307,9 +317,8 @@
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/frontend/src/components/EnvioCorreo.tsx</url>
-          <line>24</line>
-          <option name="timeStamp" value="1" />
+          <url>file://$PROJECT_DIR$/frontend/src/api.ts</url>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

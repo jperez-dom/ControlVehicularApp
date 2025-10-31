@@ -63,4 +63,21 @@ class DriverController extends AbstractController
             ]
         ], 201);
     }
+
+    #[Route('/api/drivers/{id}', name: 'api_driver_delete', methods: ['DELETE'])]
+    public function delete(int $id, EntityManagerInterface $em): JsonResponse
+    {
+        $driver = $em->getRepository(Driver::class)->find($id);
+
+        if (!$driver) {
+            return new JsonResponse(['success' => false, 'message' => 'Conductor no encontrado'], 404);
+        }
+
+        $driver->setStatus('0');
+        $driver->setUpdatedAt(new \DateTimeImmutable());
+
+        $em->flush();
+
+        return new JsonResponse(['success' => true, 'message' => 'Conductor eliminado correctamente']);
+    }
 }

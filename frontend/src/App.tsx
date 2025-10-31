@@ -14,6 +14,8 @@ import { driversAPI, vehiclesAPI, comissionsAPI, placesAPI, passAPI } from './ap
 import { Login } from "./components/Login";
 import { AddDriverModal } from "./components/AddDriverModal";
 import { AddVehicleModal } from "./components/AddVehicleModal";
+import { DeleteDriverModal } from './components/DeleteDriverModal';
+import { DeleteVehicleModal } from './components/DeleteVehicleModal';
 import { AddDestinoModal } from "./components/AddDestinoModal";
 import { DestinosList } from "./components/DestinosList";
 import { BottomSheetSelect } from "./components/BottomSheet";
@@ -24,16 +26,6 @@ interface Destino {
     estado: string;
     ciudad: string;
     comentario: string;
-}
-
-interface InspectionData {
-    id: number;
-    type: 'photo' | 'signature';
-    part: string;
-    comment: string | null;
-    photo_url: string | null;
-    signature_conductor_url: string | null;
-    signature_approver_url: string | null;
 }
 
 interface PassDetails {
@@ -47,11 +39,9 @@ interface PassDetails {
     endDate: string | null;
     status: string;
     comission_folio: string | null;
-    inspections: InspectionData[];
 }
 
 interface FichaGuardada {
-    id: number;
     folio: string;
     conductorNombre: string;
     conductorCargo: string;
@@ -59,8 +49,6 @@ interface FichaGuardada {
     destinos: Destino[];
     fechaCreacion: string;
     estado: 'creada' | 'con-entrada' | 'con-salida' | 'completada';
-    salidaData?: { pass_id?: number } & any;
-    entradaData?: any;
     passDetails: PassDetails | null;
 }
 
@@ -69,6 +57,7 @@ interface Driver {
     value: string;
     label: string;
     cargo?: string;
+    status?: number;
 }
 
 interface Vehicle {
@@ -77,8 +66,10 @@ interface Vehicle {
     label: string;
     marca?: string;
     modelo?: string;
+    placa?: string;
     color?: string;
     año?: string;
+    status?: number;
 }
 
 // A simplified version for the form state
@@ -89,6 +80,32 @@ interface FichaFormData {
     vehiculo: string;
     destinos: Destino[];
 }
+
+// Helper to check if a string is likely a hash code from the API
+const isHashCode = (str: any): str is string =>
+    typeof str === 'string' &&
+    str.length > 1 && // Should not be a single character
+    str.length < 25 &&
+    /^[A-Za-z0-9]+$/.test(str) &&
+    !/\s/.test(str) &&
+    !/[áéíóúÁÉÍÓÚ]/.test(str) && // Should not contain accents
+    !/^[A-Z][a-z]+/.test(str); // Should not look like a capitalized name
+
+// Helper to resolve a list of hashes
+const resolveCityHashes = async (hashes: string[]): Promise<{ city: string }[]> => {
+    const cityPromises = hashes.map(async (hashCode) => {
+        try {
+            const cityResponse = await fetch(`https://api.copomex.com/query/getCityByHashCode/${hashCode}?token=pruebas`);
+            if (!cityResponse.ok) return null;
+            const cityData = await cityResponse.json();
+            return cityData.response?.ciudad ? { city: cityData.response.ciudad } : null;
+        } catch (e) {
+            console.error(`Failed to resolve city hash ${hashCode}`, e);
+            return null;
+        }
+    });
+    return (await Promise.all(cityPromises)).filter((c): c is { city: string } => c !== null);
+};
 
 export default function App() {
     const [currentScreen, setCurrentScreen] = useState<'login' | 'dashboard' | 'crear-ficha' | 'detalle-ficha' | 'formulario-entrada' | 'formulario-salida'>('login');
@@ -101,6 +118,8 @@ export default function App() {
     const [loadingCiudades, setLoadingCiudades] = useState<{ [key: string]: boolean }>({});
     const [isAddDriverModalOpen, setIsAddDriverModalOpen] = useState(false);
     const [isAddVehicleModalOpen, setIsAddVehicleModalOpen] = useState(false);
+    const [isDeleteDriverModalOpen, setIsDeleteDriverModalOpen] = useState(false);
+    const [isDeleteVehicleModalOpen, setIsDeleteVehicleModalOpen] = useState(false);
     const [isAddDestinoModalOpen, setIsAddDestinoModalOpen] = useState(false);
     const [editingDestino, setEditingDestino] = useState<Destino | null>(null);
     const [showValidationErrors, setShowValidationErrors] = useState(false);
@@ -148,11 +167,11 @@ export default function App() {
                 ]);
 
                 if (Array.isArray(driversResponse.data)) {
-                    setDrivers(driversResponse.data.map((d: any) => ({ value: d.name.toLowerCase().replace(/\s+/g, '-'), label: d.name, cargo: d.position, id: d.id })));
+                    setDrivers(driversResponse.data.filter((d: any) => d.status !== 0).map((d: any) => ({ value: `${d.name.toLowerCase().replace(/\s+/g, '-')}-${d.id}`, label: d.name, cargo: d.position, id: d.id })));
                 } else { setDrivers([]); }
 
                 if (Array.isArray(vehiclesResponse.data)) {
-                    setVehicles(vehiclesResponse.data.map((v: any) => ({ value: `${v.brand}-${v.model}`.toLowerCase().replace(/\s+/g, '-'), label: `${v.brand} ${v.model}`, marca: v.brand, modelo: v.model, color: v.color, año: v.year?.toString(), id: v.id })));
+                    setVehicles(vehiclesResponse.data.filter((v: any) => v.status !== 0).map((v: any) => ({ value: v.plate, label: `${v.brand} ${v.model} (${v.plate})`, marca: v.brand, modelo: v.model, placa: v.plate, color: v.color, año: v.year?.toString(), id: v.id })));
                 } else { setVehicles([]); }
 
                 if (Array.isArray(fichasResponse.data)) {
@@ -241,9 +260,6 @@ export default function App() {
                 fuel: salidaData.combustible?.toString() || '8',
                 departure_comment: salidaData.departure_comment || '',
                 start_date: new Date().toISOString(),
-                signature_conductor: salidaData.firmaConductor || null,
-                signature_approver: salidaData.firmaAprobador || null,
-                inspections: Object.entries(salidaData.fotos || {}).map(([part, photo]) => photo ? { type: 'photo', part, photo } : null).filter(Boolean),
             };
             await passAPI.salida(payload);
             toast.success(`Salida ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
@@ -266,9 +282,6 @@ export default function App() {
                 mileage: parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0'),
                 fuel: entradaData.combustible?.toString() || '8',
                 arrival_comment: entradaData.arrival_comment || '',
-                signature_conductor: entradaData.firmaConductor || null,
-                signature_approver: entradaData.firmaAprobador || null,
-                inspections: Object.entries(entradaData.fotos || {}).map(([part, photo]) => photo ? { type: 'photo', part: `${part}_entry`, photo } : null).filter(Boolean),
             };
             await passAPI.entrada(payload);
             toast.success(`Entrada ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
@@ -317,7 +330,7 @@ export default function App() {
 
         try {
             const driver = drivers.find(d => d.label === fichaData.conductorNombre);
-            const vehicle = vehicles.find(v => v.value === fichaData.vehiculo);
+            const vehicle = vehicles.find(v => v.label === fichaData.vehiculo);
 
             if (!driver?.id || !vehicle?.id) {
                 toast.error('Error: conductor o vehículo no encontrado. Verifica que se hayan cargado desde la BD');
@@ -354,23 +367,10 @@ export default function App() {
 
                 const nuevaFicha: FichaGuardada = {
                     ...fichaData,
-                    id: comissionId,
                     folio: comissionResponse.data.comission.folio.toString(),
                     fechaCreacion: comissionResponse.data.comission.created_at,
                     estado: 'creada',
-                    passDetails: { // Initialize passDetails as a complete object
-                        id: 0, // Default ID, will be updated when salida is registered
-                        departureMileage: null,
-                        arrivalMileage: null,
-                        fuel: '8',
-                        comment_salida: null,
-                        comment_entrada: null,
-                        startDate: null,
-                        endDate: null,
-                        status: '1',
-                        comission_folio: comissionResponse.data.comission.folio.toString(),
-                        inspections: []
-                    }
+                    passDetails: null
                 };
 
                 setFichasGuardadas(prev => [...prev, nuevaFicha]);
@@ -384,10 +384,10 @@ export default function App() {
         }
     };
 
-    const getSelectedVehicleName = (vehicleValue?: string) => {
-        const value = vehicleValue || fichaData.vehiculo;
-        const vehicle = vehicles.find(v => v.value === value);
-        return vehicle ? vehicle.label : value;
+    const getSelectedVehicleName = (vehicleIdentifier?: string) => {
+        const identifier = vehicleIdentifier || fichaData.vehiculo;
+        const vehicle = vehicles.find(v => v.label === identifier || v.value === identifier || v.placa === identifier);
+        return vehicle ? vehicle.label : identifier;
     };
 
     const getEstadoLabel = (value: string) => {
@@ -411,13 +411,21 @@ export default function App() {
         toast.success('Conductor agregado correctamente');
     };
 
+    const handleDriverDeleted = (driverId: number) => {
+        setDrivers(prev => prev.filter(d => d.id !== driverId));
+    };
+
     const handleVehicleAdded = (newVehicle: Vehicle) => {
         setVehicles(prev => [...prev, newVehicle]);
         setFichaData(prev => ({
             ...prev,
-            vehiculo: newVehicle.value
+            vehiculo: newVehicle.label
         }));
         toast.success('Vehículo agregado correctamente');
+    };
+
+    const handleVehicleDeleted = (vehicleId: number) => {
+        setVehicles(prev => prev.filter(v => v.id !== vehicleId));
     };
 
     const handleDestinoAdded = (destino: Destino) => {
@@ -475,20 +483,29 @@ export default function App() {
 
             const data = await response.json();
 
-            let ciudadesList = [];
-            if (data.response && data.response.ciudades && Array.isArray(data.response.ciudades)) {
-                const firstItem = data.response.ciudades[0];
-                const isHashCode = typeof firstItem === 'string' &&
-                    (firstItem.length < 25 && /^[A-Za-z0-9]+$/.test(firstItem) &&
-                        !/^[A-Za-z\s]+$/.test(firstItem));
-
-                if (!isHashCode) {
-                    ciudadesList = data.response.ciudades.map(codigo => ({ city: codigo }));
+            // --- MORE ROBUST LOGIC ---
+            let rawList: any[] = [];
+            if (data && data.response && typeof data.response === 'object') {
+                const cities = data.response.ciudades || data.response.cities;
+                if (Array.isArray(cities)) {
+                    rawList = cities;
                 }
-            } else if (data.response && data.response.cities && Array.isArray(data.response.cities)) {
-                ciudadesList = data.response.cities;
             } else if (Array.isArray(data)) {
-                ciudadesList = data;
+                rawList = data;
+            }
+
+            let ciudadesList: { city: string }[] = [];
+
+            if (rawList.length > 0) {
+                const firstItem = rawList[0];
+                
+                if (isHashCode(firstItem)) {
+                    ciudadesList = await resolveCityHashes(rawList as string[]);
+                } else if (typeof firstItem === 'string') {
+                    ciudadesList = rawList.map((ciudad: string) => ({ city: ciudad }));
+                } else if (typeof firstItem === 'object' && firstItem !== null) {
+                    ciudadesList = rawList;
+                }
             }
 
             if (ciudadesList.length > 0) {
@@ -499,7 +516,7 @@ export default function App() {
                         value: cityName.toLowerCase().replace(/\s+/g, '-').replace(/[áàäâ]/g, 'a').replace(/[éèëê]/g, 'e').replace(/[íìïî]/g, 'i').replace(/[óòöô]/g, 'o').replace(/[úùüû]/g, 'u').replace(/ñ/g, 'n').replace(/[^a-z0-9-]/g, ''),
                         label: cityName
                     };
-                }).filter(Boolean);
+                }).filter((c): c is { value: string, label: string } => c !== null);
 
                 const ciudadesUnicas = ciudadesFormatted.filter((ciudad, index, self) =>
                     index === self.findIndex(c => c.value === ciudad.value)
@@ -780,6 +797,16 @@ export default function App() {
         }
     };
 
+    const handleVehicleChange = (vehicleValue: string) => {
+        const vehicle = vehicles.find(v => v.value === vehicleValue);
+        if (vehicle) {
+            setFichaData(prev => ({
+                ...prev,
+                vehiculo: vehicle.label
+            }));
+        }
+    };
+
     const updateFichaData = (field: keyof FichaFormData, value: string | Destino[]) => {
         setFichaData(prev => ({ ...prev, [field]: value }));
     };
@@ -797,7 +824,11 @@ export default function App() {
                 return (
                     <div key="dashboard" className="min-h-screen bg-gray-50 pb-24">
                         <div className="h-12 bg-black"></div>
-                        <div className="bg-black py-2 px-4"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto"/></div></div>
+                        <div className="bg-black px-4 py-2">
+                            <div className="flex items-center justify-center">
+                                <img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto object-contain px-[54px] py-[0px]"/>
+                            </div>
+                        </div>
                         <div className="bg-white px-4 py-4 border-b"><h1 className="text-black text-center text-xl">Fichas</h1></div>
                         <div className="max-w-[360px] mx-auto px-4 py-6 space-y-4">
                             {fichasGuardadas.length === 0 ? (
@@ -889,7 +920,7 @@ export default function App() {
                             <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
                                 <DialogContent className="max-w-[320px]">
                                     <DialogHeader><DialogTitle>Eliminar ficha</DialogTitle><DialogDescription>¿Estás seguro? Esta acción no se puede deshacer.</DialogDescription></DialogHeader>
-                                    <div className="flex justify-end gap-2 pt-4">
+                                    <div className="flex justify-center gap-2 pt-4">
                                         <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>Cancelar</Button>
                                         <Button variant="destructive" onClick={handleDeleteFicha}>Eliminar</Button>
                                     </div>
@@ -902,14 +933,18 @@ export default function App() {
                 return (
                     <div key="crear-ficha" className="min-h-screen bg-gray-50">
                          <div className="h-12 bg-black"></div>
-                        <div className="bg-black px-4 py-2"><div className="flex items-center justify-center"><img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto" /></div></div>
+                        <div className="bg-black px-4 py-2">
+                            <div className="flex items-center justify-center">
+                                <img src={grupoOptimoLogo} alt="GRUPO OPTIMO" className="h-12 w-auto object-contain px-[54px] py-[0px]"/>
+                            </div>
+                        </div>
                         <div className="bg-white px-4 py-4 border-b">
                              <div className="flex items-center gap-3">
                                 <Button variant="ghost" size="sm" onClick={handleBackToDashboard} className="p-2 h-auto"><ArrowLeft className="h-5 w-5" /></Button>
                                 <h1 className="text-black text-xl flex-1 text-center mr-11">Crear Ficha</h1>
                             </div>
                         </div>
-                        <div className="overflow-y-auto pb-40">
+                        <div className="pb-40">
                             <div className="max-w-[360px] mx-auto px-4 py-6 space-y-6">
                                 <div className="bg-white rounded-lg p-4 space-y-4">
                                     <div><Label htmlFor="folio">Folio</Label><Input id="folio" value={fichaData.folio} disabled className="mt-1 bg-gray-50" /></div>
@@ -919,8 +954,9 @@ export default function App() {
                                                 Nombre del conductor *
                                             </Label>
                                             <div className="mt-1 flex gap-2">
-                                                <div className="flex-1"><BottomSheetSelect options={drivers} value={drivers.find(d => d.label === fichaData.conductorNombre)?.value || ''} onValueChange={(value) => { const d = drivers.find(d => d.value === value); setFichaData(p => ({...p, conductorNombre: d?.label || '', conductorCargo: d?.cargo || ''})); }} placeholder="Seleccionar conductor"/></div>
+                                                <div className="flex-1"><BottomSheetSelect options={drivers} value={drivers.find(d => d.label === fichaData.conductorNombre)?.value || ''} onValueChange={handleConductorChange} placeholder="Seleccionar conductor"/></div>
                                                 <Button type="button" variant="outline" size="sm" onClick={() => setIsAddDriverModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Plus className="h-4 w-4" /></Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsDeleteDriverModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button>
                                             </div>
                                             {showValidationErrors && !fichaData.conductorNombre && (
                                                 <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>
@@ -946,8 +982,9 @@ export default function App() {
                                                 Vehículo *
                                             </Label>
                                             <div className="mt-1 flex gap-2">
-                                                <div className="flex-1"><BottomSheetSelect options={vehicles} value={fichaData.vehiculo} onValueChange={(v) => setFichaData(p => ({...p, vehiculo: v}))} placeholder="Seleccionar vehículo"/></div>
+                                                <div className="flex-1"><BottomSheetSelect options={vehicles} value={vehicles.find(v => v.label === fichaData.vehiculo)?.value || ''} onValueChange={handleVehicleChange} placeholder="Seleccionar vehículo"/></div>
                                                 <Button type="button" variant="outline" size="sm" onClick={() => setIsAddVehicleModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Plus className="h-4 w-4" /></Button>
+                                                <Button type="button" variant="outline" size="sm" onClick={() => setIsDeleteVehicleModalOpen(true)} className="h-[42px] w-[42px] p-0 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button>
                                             </div>
                                             {showValidationErrors && !fichaData.vehiculo && (
                                                 <p className="text-destructive text-sm mt-1">Este campo es obligatorio</p>
@@ -974,11 +1011,13 @@ export default function App() {
                         </div>
                         <AddDriverModal open={isAddDriverModalOpen} onOpenChange={setIsAddDriverModalOpen} onDriverAdded={handleDriverAdded} />
                         <AddVehicleModal open={isAddVehicleModalOpen} onOpenChange={setIsAddVehicleModalOpen} onVehicleAdded={handleVehicleAdded} />
+                        <DeleteDriverModal open={isDeleteDriverModalOpen} onOpenChange={setIsDeleteDriverModalOpen} drivers={drivers} onDriverDeleted={handleDriverDeleted} />
+                        <DeleteVehicleModal open={isDeleteVehicleModalOpen} onOpenChange={setIsDeleteVehicleModalOpen} vehicles={vehicles} onVehicleDeleted={handleVehicleDeleted} />
                         <AddDestinoModal open={isAddDestinoModalOpen} onOpenChange={setIsAddDestinoModalOpen} onDestinoAdded={(d) => {if (editingDestino) {setFichaData(p => ({...p, destinos: p.destinos.map(dest => dest.id === d.id ? dest : dest)}));} else {setFichaData(p => ({...p, destinos: [...p.destinos, d]}));} setEditingDestino(null);}} editingDestino={editingDestino} estados={estados} ciudades={ciudades} loadCiudadesForEstado={loadCiudadesForEstado} loadingCiudades={loadingCiudades} />
                     </div>
                 );
             case 'detalle-ficha':
-                return selectedFicha && <DetalleFicha key={selectedFicha.folio} ficha={selectedFicha} onBack={handleBackToDashboard} onGoToEntrada={handleGoToEntrada} onGoToSalida={handleGoToSalida} onEditEntrada={handleEditEntrada} onEditSalida={handleEditSalida} getEstadoLabel={getEstadoLabel} getCiudadLabel={getCiudadLabel} getVehicleName={getSelectedVehicleName} refreshFichas={refreshFichas}/>;
+                return selectedFicha && <DetalleFicha ficha={selectedFicha} onBack={handleBackToDashboard} onGoToEntrada={handleGoToEntrada} onGoToSalida={handleGoToSalida} onEditEntrada={handleEditEntrada} onEditSalida={handleEditSalida} getEstadoLabel={getEstadoLabel} getCiudadLabel={getCiudadLabel} getVehicleName={getSelectedVehicleName} refreshFichas={refreshFichas}/>;
             case 'formulario-salida':
                 return selectedFicha && <FormularioSalida ficha={selectedFicha} onBack={() => setCurrentScreen('detalle-ficha')} onComplete={handleSalidaComplete}/>;
             case 'formulario-entrada':
