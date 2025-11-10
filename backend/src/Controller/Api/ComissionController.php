@@ -3,12 +3,12 @@
 namespace App\Controller\Api;
 
 use App\Entity\Comission;
-use App\Entity\Driver;
-use App\Entity\Inspection;
-use App\Entity\Pass;
+use App\Entity\DeparturePass;
+use App\Entity\ArrivalPass;
 use App\Entity\Place;
-use App\Entity\Users;
+use App\Entity\Driver;
 use App\Entity\Vehicle;
+use App\Entity\Users;
 use App\Service\PdfGeneratorService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -19,192 +19,143 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class ComissionController extends AbstractController
 {
-    // --- MÉTODO PARA DESCARGAR LA FICHA EN PDF ---
     #[Route('/api/comissions/folio/{folio}/download-pdf', name: 'api_comission_download_pdf', methods: ['GET'])]
-    public function downloadPdf(
-        string $folio,
-        EntityManagerInterface $em,
-        PdfGeneratorService $pdf
-    ): Response {
-        // 1. Buscar la Ficha
+    public function downloadPdf(string $folio, EntityManagerInterface $em, PdfGeneratorService $pdf): Response
+    {
         $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $folio]);
-
         if (!$comission) {
-            return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada con el folio proporcionado.'], 404);
+            return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
         }
 
-        // 2. Lógica de Generación de PDF
         try {
-            $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
-            $destinos = $em->getRepository(Place::class)->findBy(['comission' => $comission]);
+            $departurePass = $em->getRepository(DeparturePass::class)->findOneBy(['comission' => $comission]);
+            $arrivalPass = $departurePass ? $em->getRepository(ArrivalPass::class)->findOneBy(['departurePass' => $departurePass]) : null;
 
-            $photos = [];
-            $signatures = [
-                'driver_salida' => null, 'approver_salida' => null,
-                'driver_entrada' => null, 'approver_entrada' => null
+            $photos = ['departure' => [], 'arrival' => []];
+            $signatures = ['driver_departure' => null, 'approver_departure' => null, 'driver_arrival' => null, 'approver_arrival' => null];
+            $passDetails = [];
+
+            $basePartDescriptions = [
+                'mileage' => 'Odómetro', 'front' => 'Frontal', 'right_side' => 'Lateral Derecho',
+                'left_side' => 'Lateral Izquierdo', 'back' => 'Posterior', 'interior' => 'Interior',
             ];
 
-            if ($pass) {
-                // 1. Get all photos
-                $photoInspections = $em->getRepository(Inspection::class)->findBy([
-                    'pass' => $pass,
-                    'type' => 'photo'
-                ]);
-                foreach ($photoInspections as $inspection) {
-                    if ($inspection->getPhotoUrl()) {
-                        $photos[] = [
-                            'label' => 'Inspección de ' . $inspection->getPart(),
-                            'path' => $pdf->publicUrlToPath($inspection->getPhotoUrl()),
-                        ];
-                    }
-                }
+            $signaturePartToTemplateKeyMap = [
+                'conductor_salida' => 'driver_departure',
+                'approver_salida' => 'approver_departure',
+                'conductor_entrada_entry' => 'driver_arrival',
+                'approver_entrada_entry' => 'approver_arrival',
+            ];
 
-                // 2. Get Salida signature
-                $salidaSignature = $em->getRepository(Inspection::class)->findOneBy([
-                    'pass' => $pass,
-                    'type' => 'signature',
-                    'part' => 'salida'
-                ]);
-                if ($salidaSignature) {
-                    if ($salidaSignature->getSignatureConductor()) {
-                        $signatures['driver_salida'] = $pdf->publicUrlToPath($salidaSignature->getSignatureConductor());
-                    }
-                    if ($salidaSignature->getSignatureApprover()) {
-                        $signatures['approver_salida'] = $pdf->publicUrlToPath($salidaSignature->getSignatureApprover());
-                    }
-                }
-
-                // 3. Get Entrada signature
-                $entradaSignature = $em->getRepository(Inspection::class)->findOneBy([
-                    'pass' => $pass,
-                    'type' => 'signature',
-                    'part' => 'entrada'
-                ]);
-                if ($entradaSignature) {
-                    if ($entradaSignature->getSignatureConductor()) {
-                        $signatures['driver_entrada'] = $pdf->publicUrlToPath($entradaSignature->getSignatureConductor());
-                    }
-                    if ($entradaSignature->getSignatureApprover()) {
-                        $signatures['approver_entrada'] = $pdf->publicUrlToPath($entradaSignature->getSignatureApprover());
-                    }
-                }
-            }
-
-            $passDetails = null;
-            if ($pass) {
-                $endDate = $pass->getEndDate();
+            if ($departurePass) {
                 $passDetails = [
-                    'startDate' => $pass->getStartDate(),
-                    'endDate' => ($endDate && $endDate->format('Y') > 1970) ? $endDate : null,
-                    'departureMileage' => $pass->getDepartureMileage(),
-                    'arrivalMileage' => $pass->getArrivalMileage(),
-                    'comment_salida' => $pass->getDepartureComment(),
-                    'comment_entrada' => $pass->getArrivalComment(),
+                    'id' => $departurePass->getId(),
+                    'startDate' => $departurePass->getStartDate(),
+                    'endDate' => $arrivalPass?->getEndDate(),
+                    'departureMileage' => $departurePass->getDepartureMileage(),
+                    'arrivalMileage' => $arrivalPass?->getArrivalMileage(),
+                    'departureFuel' => $departurePass->getDepartureFuel(),
+                    'arrivalFuel' => $arrivalPass?->getArrivalFuel(),
+                    'comment_salida' => $departurePass->getDepartureComment(),
+                    'comment_entrada' => $arrivalPass?->getArrivalComment(),
                 ];
+
+                foreach ($departurePass->getInspections() as $inspection) {
+                    $fileName = $inspection->getPhotoUrl();
+                    if (!$fileName) continue;
+
+                    $moment = $inspection->getMoment();
+                    $publicUrl = sprintf("/uploads/%ss/%s", $inspection->getType(), $fileName);
+
+                    if ($inspection->getType() === 'photo') {
+                        $label = $basePartDescriptions[$inspection->getPart()] ?? ucfirst(str_replace('_', ' ', $inspection->getPart()));
+                        if ($moment === 'departure') {
+                            $photos['salida'][] = ['label' => $label, 'path' => $pdf->publicUrlToPath($publicUrl)];
+                        } elseif ($moment === 'arrival') {
+                            $photos['entrada'][] = ['label' => $label, 'path' => $pdf->publicUrlToPath($publicUrl)];
+                        }
+                    } elseif ($inspection->getType() === 'signature') {
+                        $part = $inspection->getPart();
+                        if (isset($signaturePartToTemplateKeyMap[$part])) {
+                            $templateKey = $signaturePartToTemplateKeyMap[$part];
+                            $signatures[$templateKey] = $pdf->publicUrlToPath($publicUrl);
+                        }
+                    }
+                }
             }
 
             $statusText = 'Creada';
-            if ($pass) {
-                $statusText = 'Con Salida';
-                if ($passDetails && $passDetails['endDate']) {
-                    $statusText = 'Completada';
-                }
+            if ($departurePass) {
+                $statusText = $arrivalPass ? 'Completada' : 'Con Salida';
             }
 
             $dataForPdf = [
                 'comission' => [
                     'folio' => $comission->getFolio(),
                     'driverName' => $comission->getDriver()?->getName(),
+                    'driverPosition' => $comission->getDriver()?->getPosition(),
                     'vehicleName' => $comission->getVehicle() ? $comission->getVehicle()->getBrand() . ' ' . $comission->getVehicle()->getModel() : 'N/A',
+                    'vehiclePlate' => $comission->getVehicle()?->getPlate(),
                     'status' => $statusText,
+                    'approverName' => $comission->getUser()?->getUser(),
                 ],
                 'pass' => $passDetails,
-                'destinos' => array_map(fn($p) => [
-                    'estado' => $p->getState(),
-                    'ciudad' => $p->getCity(),
-                    'comentario' => $p->getComment(),
-                ], $destinos),
+                'destinos' => array_map(fn($p) => ['estado' => $p->getState(), 'ciudad' => $p->getCity(), 'comentario' => $p->getComment()], $comission->getPlaces()->toArray()),
                 'photos' => $photos,
                 'signatures' => $signatures,
-                'logoPath' => $pdf->publicUrlToPath('/img/logo-optimo.png'),
+                'logoPath' => $pdf->publicUrlToPath('/uploads/logo.png'),
             ];
 
-            $pdfBinary = $pdf->renderToPdf($dataForPdf, 'pdf/comission_report.html.twig');
+            $pdfFileName = sprintf('reporte-comision-%s.pdf', $comission->getFolio());
+            $pdfPath = $pdf->renderAndSavePdf($pdfFileName, $dataForPdf, 'pdf/comission_report.html.twig');
 
-            $response = new Response($pdfBinary);
-            $response->headers->set('Content-Type', 'application/pdf');
-            $response->headers->set('Content-Disposition', sprintf('attachment; filename="reporte-comision-%s.pdf"', $comission->getFolio()));
-
-            return $response;
+            return new Response(file_get_contents($pdfPath), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => sprintf('attachment; filename="%s"', $pdfFileName),
+            ]);
 
         } catch (\Exception $e) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Error al generar el PDF: ' . $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ], 500);
+            return new JsonResponse(['success' => false, 'message' => 'Error al generar el PDF: ' . $e->getMessage(), 'trace' => $e->getTraceAsString()], 500);
         }
     }
 
-    // Listar fichas con detalles para persistencia en frontend
     #[Route('/api/comissions', name: 'api_comission_list', methods: ['GET'])]
-    public function list(EntityManagerInterface $em): JsonResponse
+    public function list(EntityManagerInterface $em, Request $request): JsonResponse
     {
         $comissions = $em->getRepository(Comission::class)->findBy(['status' => '1'], ['created_at' => 'DESC']);
-
+        $baseUrl = $request->getSchemeAndHttpHost();
         $data = [];
-        foreach ($comissions as $comission) {
-            $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
 
-            $estado = 'creada';
+        foreach ($comissions as $comission) {
+            $departurePass = $em->getRepository(DeparturePass::class)->findOneBy(['comission' => $comission]);
+            $arrivalPass = null;
             $passDetails = null;
 
-            if ($pass) {
-                if ($pass->getEndDate() && $pass->getEndDate()->format('Y') > 1970) {
-                    $estado = 'completada';
-                } else {
-                    $estado = 'con-salida';
+            if ($departurePass) {
+                $arrivalPass = $em->getRepository(ArrivalPass::class)->findOneBy(['departurePass' => $departurePass]);
+                $inspectionsData = [];
+                foreach ($departurePass->getInspections() as $i) {
+                    $fileName = $i->getPhotoUrl();
+                    if (!$fileName) continue;
+                    $publicUrl = sprintf("/uploads/%ss/%s", $i->getType(), $fileName);
+                    $inspectionsData[] = [
+                        'id' => $i->getId(), 'type' => $i->getType(), 'part' => $i->getPart(),
+                        'moment' => $i->getMoment(), 'photo_url' => $baseUrl . $publicUrl,
+                    ];
                 }
 
-                $inspections = $em->getRepository(Inspection::class)->findBy(['pass' => $pass]);
-                $inspectionsData = array_map(fn($i) => [
-                    'id' => $i->getId(),
-                    'type' => $i->getType(),
-                    'part' => $i->getPart(),
-                    'comment' => $i->getComment(),
-                    'photo_url' => $i->getPhotoUrl(),
-                    'signature_conductor_url' => $i->getSignatureConductor(),
-                    'signature_approver_url' => $i->getSignatureApprover(),
-                ], $inspections);
-
                 $passDetails = [
-                    'id' => $pass->getId(),
-                    'departureMileage' => $pass->getDepartureMileage(),
-                    'arrivalMileage' => $pass->getArrivalMileage(),
-                    'fuel' => $pass->getFuel(),
-                    'comment_salida' => $pass->getDepartureComment(),
-                    'comment_entrada' => $pass->getArrivalComment(),
-                    'startDate' => $pass->getStartDate()?->format('Y-m-d H:i:s'),
-                    'endDate' => $pass->getEndDate()?->format('Y-m-d H:i:s'),
-                    'status' => $pass->getStatus(),
-                    'comission_folio' => $comission->getFolio(),
+                    'id' => $departurePass->getId(),
+                    'startDate' => $departurePass->getStartDate()?->format('Y-m-d H:i:s'),
+                    'endDate' => $arrivalPass?->getEndDate()?->format('Y-m-d H:i:s'),
+                    'departureMileage' => $departurePass->getDepartureMileage(),
+                    'arrivalMileage' => $arrivalPass?->getArrivalMileage(),
+                    'departureFuel' => $departurePass->getDepartureFuel(),
+                    'arrivalFuel' => $arrivalPass?->getArrivalFuel(),
+                    'comment_salida' => $departurePass->getDepartureComment(),
+                    'comment_entrada' => $arrivalPass?->getArrivalComment(),
                     'inspections' => $inspectionsData,
                 ];
-            }
-
-            $places = $em->getRepository(Place::class)->findBy(['comission' => $comission]);
-            $destinos = array_map(fn($p) => [
-                'id' => (string)$p->getId(),
-                'estado' => $p->getState(),
-                'ciudad' => $p->getCity(),
-                'comentario' => $p->getComment(),
-            ], $places);
-
-            $vehicle = $comission->getVehicle();
-            $vehicleValue = '';
-            if ($vehicle) {
-                $vehicleValue = strtolower($vehicle->getBrand() . '-' . $vehicle->getModel());
-                $vehicleValue = preg_replace('/\s+/', '-', $vehicleValue);
             }
 
             $data[] = [
@@ -212,10 +163,10 @@ class ComissionController extends AbstractController
                 'folio' => (string)$comission->getFolio(),
                 'conductorNombre' => $comission->getDriver()?->getName(),
                 'conductorCargo' => $comission->getDriver()?->getPosition(),
-                'vehiculo' => $vehicleValue,
-                'destinos' => $destinos,
+                'vehiculo' => $comission->getVehicle() ? $comission->getVehicle()->getBrand() . ' ' . $comission->getVehicle()->getModel() : null,
+                'destinos' => array_map(fn($p) => ['id' => (string)$p->getId(), 'estado' => $p->getState(), 'ciudad' => $p->getCity(), 'comentario' => $p->getComment()], $comission->getPlaces()->toArray()),
                 'fechaCreacion' => $comission->getCreatedAt()?->format('Y-m-d H:i:s'),
-                'estado' => $estado,
+                'estado' => $arrivalPass ? 'completada' : ($departurePass ? 'con-salida' : 'creada'),
                 'passDetails' => $passDetails,
             ];
         }
@@ -223,7 +174,6 @@ class ComissionController extends AbstractController
         return new JsonResponse($data);
     }
 
-    // Crear una nueva ficha
     #[Route('/api/comissions', name: 'api_comission_create', methods: ['POST'])]
     public function create(Request $request, EntityManagerInterface $em): JsonResponse
     {
@@ -241,119 +191,59 @@ class ComissionController extends AbstractController
             return new JsonResponse(['success' => false, 'message' => 'Conductor, vehículo o usuario no encontrado'], 404);
         }
 
-        $comission = new Comission();
-        $comission->setFolio((int)(date('ymd') . str_pad((string)rand(1, 999), 3, '0', STR_PAD_LEFT)));
-        $comission->setDriver($driver);
-        $comission->setVehicle($vehicle);
-        $comission->setUser($user);
-        $comission->setDate(new \DateTime());
-        $comission->setCity($data['city'] ?? 'Por definir');
-        $comission->setState($data['state'] ?? 'Por definir');
-        $comission->setStatus('1');
-        $comission->setDescription($data['description'] ?? null);
-        $comission->setCreatedAt(new \DateTimeImmutable());
-        $comission->setUpdatedAt(new \DateTimeImmutable());
+        try {
+            $comission = new Comission();
+            $comission->setFolio(date('ymd') . str_pad((string)rand(1, 999), 3, '0', STR_PAD_LEFT));
+            $comission->setDriver($driver);
+            $comission->setVehicle($vehicle);
+            $comission->setUser($user);
+            $comission->setDate(new \DateTime());
+            $comission->setCity($data['city'] ?? 'Por definir');
+            $comission->setState($data['state'] ?? 'Por definir');
+            $comission->setDescription($data['description'] ?? null);
+            $comission->setStatus('1');
+            $comission->setCreatedAt(new \DateTimeImmutable());
+            $comission->setUpdatedAt(new \DateTimeImmutable());
 
-        $em->persist($comission);
-        $em->flush();
+            $em->persist($comission);
+            $em->flush();
 
-        return new JsonResponse([
-            'success' => true,
-            'message' => 'Ficha creada correctamente',
-            'comission' => [
-                'id' => $comission->getId(),
-                'folio' => $comission->getFolio(),
-                'driver' => $driver->getName(),
-                'vehicle' => $vehicle->getModel() . ' ' . $vehicle->getBrand(),
-                'city' => $comission->getCity(),
-                'state' => $comission->getState(),
-                'status' => $comission->getStatus(),
-                'created_at' => $comission->getCreatedAt()?->format('Y-m-d H:i:s'),
-            ]
-        ], 201);
+            return new JsonResponse([
+                'success' => true,
+                'message' => 'Ficha creada correctamente',
+                'comission' => [
+                    'id' => $comission->getId(),
+                    'folio' => $comission->getFolio(),
+                ]
+            ], 201);
+        } catch (\Exception $e) {
+            return new JsonResponse(['success' => false, 'message' => 'Error al crear la ficha: ' . $e->getMessage()], 500);
+        }
     }
 
-    #[Route('/api/comissions/folio/{folio}/pass', name: 'api_comission_pass_update', methods: ['PUT'])]
-    public function updatePass(Request $request, EntityManagerInterface $em, string $folio): JsonResponse
-    {
-        $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $folio]);
-
-        if (!$comission) {
-            return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
-        }
-
-        $pass = $em->getRepository(Pass::class)->findOneBy(['comission' => $comission]);
-
-        if (!$pass) {
-            return new JsonResponse(['success' => false, 'message' => 'Pase de salida/entrada no encontrado para esta ficha.'], 404);
-        }
-
-        $data = json_decode($request->getContent(), true);
-
-        if (array_key_exists('departureMileage', $data)) {
-            $pass->setDepartureMileage($data['departureMileage']);
-        }
-        if (array_key_exists('arrivalMileage', $data)) {
-            $pass->setArrivalMileage($data['arrivalMileage']);
-        }
-        if (array_key_exists('departureComment', $data)) {
-            $pass->setDepartureComment($data['departureComment']);
-        }
-        if (array_key_exists('arrivalComment', $data)) {
-            $pass->setArrivalComment($data['arrivalComment']);
-        }
-        if (array_key_exists('fuel', $data)) {
-            $pass->setFuel($data['fuel']);
-        }
-
-        $em->flush();
-
-        return new JsonResponse([
-            'success' => true,
-            'message' => 'Pase actualizado correctamente.'
-        ]);
-    }
-
-    // Borrado lógico
     #[Route('/api/comissions/folio/{folio}', name: 'delete_comission_by_folio', methods: ['DELETE'])]
     public function deleteByFolio(string $folio, EntityManagerInterface $em): JsonResponse
     {
         try {
             $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $folio]);
+            if (!$comission) return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
 
-            if (!$comission) {
-                return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
-            }
-
-            // cambiar status a 0
             $comission->setStatus('0');
             $em->flush();
 
-            return new JsonResponse([
-                'success' => true,
-                'message' => "Ficha con folio {$folio} marcada como eliminada (status = 0)."
-            ]);
+            return new JsonResponse(['success' => true, 'message' => "Ficha con folio {$folio} marcada como eliminada (status = 0)."]);
         } catch (\Exception $e) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Error al intentar marcar la ficha como eliminada: ' . $e->getMessage()
-            ], 500);
+            return new JsonResponse(['success' => false, 'message' => 'Error al intentar marcar la ficha como eliminada: ' . $e->getMessage()], 500);
         }
     }
 
-    // Restaurar ficha eliminada
     #[Route('/api/comissions/folio/{folio}/restore', name: 'restore_comission_by_folio', methods: ['PATCH'])]
     public function restoreByFolio(string $folio, EntityManagerInterface $em): JsonResponse
     {
         $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $folio]);
+        if (!$comission) return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
 
-        if (!$comission) {
-            return new JsonResponse(['success' => false, 'message' => 'Ficha no encontrada.'], 404);
-        }
-
-        if ($comission->getStatus() === '1') {
-            return new JsonResponse(['success' => false, 'message' => 'La ficha ya está activa.']);
-        }
+        if ($comission->getStatus() === '1') return new JsonResponse(['success' => false, 'message' => 'La ficha ya está activa.']);
 
         $comission->setStatus('1');
         $em->flush();

@@ -4,12 +4,25 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    photos_directory: '%kernel.project_dir%/public/uploads/photos'
+    signatures_directory: '%kernel.project_dir%/public/uploads/signatures'
+    reports_directory: '%kernel.project_dir%/public/uploads/reports'
+    # Legacy parameters for compatibility
+    photos: '%photos_directory%'
+    carpetaConstancias: '%kernel.project_dir%/public/uploads/constancias'
+    carpetaDocumentos: '%kernel.project_dir%/public/uploads/documentos'
+    carpetaTickets: '%kernel.project_dir%/public/uploads/tickets'
+    carpetaZipFacturas: '%kernel.project_dir%/public/uploads/zips'
+    carpetaArchivoAutorizacion: '%kernel.project_dir%/public/uploads/autorizaciones'
 
 services:
+    # default configuration for services in *this* file
     _defaults:
-        autowire: true
-        autoconfigure: true
+        autowire: true      # Automatically injects dependencies in your services.
+        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
 
+    # makes classes in src/ available to be used as services
+    # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: '../src/'
         exclude:
@@ -21,19 +34,21 @@ services:
     App\Service\PdfGeneratorService:
         arguments:
             $projectDir: '%kernel.project_dir%'
+            $reportsDirectory: '%reports_directory%'
 
-    # Listener para auditar acciones en Doctrine (INSERT/UPDATE/DELETE)
-    # Configuración 100% explícita para evitar errores de autowiring
-    App\EventListener\DoctrineAuditSubscriber:
+    App\Service\FileUploader:
         arguments:
-            - '@Doctrine\ORM\EntityManagerInterface'
-            - '@Symfony\Component\HttpFoundation\RequestStack'
-            - '@Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface'
-        tags:
-            - { name: doctrine.event_listener, event: postPersist, method: postPersist }
-            - { name: doctrine.event_listener, event: postUpdate, method: postUpdate }
-            - { name: doctrine.event_listener, event: postRemove, method: postRemove }
-
+            $slugger: '@slugger'
+            $targetDirectories:
+                photo: '%photos_directory%'
+                signature: '%signatures_directory%'
+                report: '%reports_directory%'
+                # Legacy types
+                constancia: '%carpetaConstancias%'
+                documento: '%carpetaDocumentos%'
+                ticket: '%carpetaTickets%'
+                zip: '%carpetaZipFacturas%'
+                autorizacion: '%carpetaArchivoAutorizacion%'
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

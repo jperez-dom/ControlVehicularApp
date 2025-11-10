@@ -17,7 +17,8 @@ interface PassDetails {
     id: number;
     departureMileage: number | null;
     arrivalMileage: number | null;
-    fuel: string;
+    departureFuel: string; // Cambiado
+    arrivalFuel: string; // Cambiado
     comment_salida: string | null;
     comment_entrada: string | null;
     startDate: string | null;
@@ -210,8 +211,8 @@ export function DetalleFicha({
                         <Button className="w-full h-12" onClick={handleDescargarFicha}><Download className="h-4 w-4 mr-2" />Descargar Ficha</Button>
                     ) : (
                         <div className="grid grid-cols-2 gap-3">
-                            <Button id="abrirSalidaBtn" variant="outline" onClick={onGoToSalida} disabled={hasSalida}>Salida</Button>
-                            <Button id="abrirEntradaBtn" onClick={onGoToEntrada} disabled={!hasSalida || hasEntrada}>Entrada</Button>
+                            <Button variant="outline" onClick={onGoToSalida} disabled={hasSalida}>Salida</Button> 
+                            <Button onClick={onGoToEntrada} disabled={!hasSalida || hasEntrada}>Entrada</Button>
                         </div>
                     )}
                 </div>

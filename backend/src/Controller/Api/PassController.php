@@ -3,199 +3,120 @@
 namespace App\Controller\Api;
 
 use App\Entity\Comission;
-use App\Entity\Pass;
+use App\Entity\DeparturePass;
+use App\Entity\ArrivalPass;
 use App\Entity\Inspection;
+use App\Service\FileUploader;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
 
 class PassController extends AbstractController
 {
+    private FileUploader $fileUploader;
+
+    public function __construct(FileUploader $fileUploader)
+    {
+        $this->fileUploader = $fileUploader;
+    }
+
     #[Route('/api/pass/salida', name: 'api_pass_salida', methods: ['POST'])]
     public function salida(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $data = $request->request->all();
+        $comissionId = $data['comission_id'] ?? null;
 
-        if (isset($data['pass_id']) && !empty($data['pass_id'])) {
-            $pass = $em->getRepository(Pass::class)->find($data['pass_id']);
-            if (!$pass) {
-                return new JsonResponse(['success' => false, 'message' => 'El pase a actualizar no fue encontrado.'], 404);
-            }
-        } else {
-            if (!isset($data['comission_id']) || empty($data['comission_id'])) {
-                return new JsonResponse(['success' => false, 'message' => 'El Folio de la comisión es obligatorio para crear un nuevo pase.'], 400);
-            }
-            $comission = $em->getRepository(Comission::class)->findOneBy(['folio' => $data['comission_id']]);
-            if (!$comission) {
-                return new JsonResponse(['success' => false, 'message' => "Ficha no encontrada (Folio: {$data['comission_id']})."], 404);
-            }
-            $pass = new Pass();
-            $pass->setComission($comission);
-            $pass->setStartDate(isset($data['start_date']) ? new \DateTime($data['start_date']) : new \DateTime());
-            $pass->setEndDate(new \DateTime('1970-01-01')); // Default date for not-yet-arrived
+        if (!$comissionId) {
+            return new JsonResponse(['success' => false, 'message' => 'Se requiere "comission_id".'], 400);
         }
 
-        // Update fields
-        $pass->setDepartureMileage($data['mileage'] ?? $pass->getDepartureMileage() ?? 0);
-        $pass->setFuel($data['fuel'] ?? $pass->getFuel() ?? '8');
-        $pass->setDepartureComment($data['departure_comment'] ?? $pass->getDepartureComment());
-        $pass->setUpdatedAt(new \DateTimeImmutable());
-
-        if (!$em->contains($pass)) {
-            $em->persist($pass);
+        $comission = $em->getRepository(Comission::class)->find($comissionId);
+        if (!$comission) {
+            return new JsonResponse(['success' => false, 'message' => "Ficha no encontrada (ID: {$comissionId})."], 404);
         }
 
-        // Flush here to get the pass ID if it's new
+        $departurePass = new DeparturePass();
+        $departurePass->setComission($comission);
+        $departurePass->setStartDate(new \DateTime());
+        $departurePass->setDepartureMileage($data['mileage'] ?? 0);
+        $departurePass->setDepartureFuel($data['fuel'] ?? '8');
+        $departurePass->setDepartureComment($data['departure_comment'] ?? null);
+
+        $this->handleInspections($request, $departurePass, 'departure');
+
+        $em->persist($departurePass);
         $em->flush();
 
-        // --- Handle Inspections (Photos & Signatures) ---
-        $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/';
-        $signatureDir = $uploadDir . 'signatures/';
-        $photoDir = $uploadDir . 'photos/';
-
-        if (!is_dir($signatureDir)) mkdir($signatureDir, 0777, true);
-        if (!is_dir($photoDir)) mkdir($photoDir, 0777, true);
-
-        // Handle new photos
-        if (isset($data['inspections']) && is_array($data['inspections'])) {
-            foreach ($data['inspections'] as $inspectionData) {
-                if (isset($inspectionData['photo']) && !empty($inspectionData['photo'])) {
-                    $inspection = new Inspection();
-                    $inspection->setPass($pass);
-                    $inspection->setType($inspectionData['type'] ?? 'photo');
-                    $inspection->setPart($inspectionData['part'] ?? 'vehicle');
-                    $inspection->setComment($inspectionData['comment'] ?? null);
-                    $inspection->setStatus('1');
-                    $em->persist($inspection);
-                    $em->flush(); // Flush to get inspection ID
-
-                    $photoPath = $photoDir . $inspection->getId() . '_' . $inspectionData['part'] . '.png';
-                    $this->saveBase64Image($inspectionData['photo'], $photoPath);
-                    $inspection->setPhotoUrl('/uploads/photos/' . basename($photoPath));
-                    $em->persist($inspection);
-                }
-            }
-        }
-
-        // Handle signatures (assuming they might be updated or added)
-        if (!empty($data['signature_conductor']) || !empty($data['signature_approver'])) {
-            $signatureInspection = $em->getRepository(Inspection::class)->findOneBy(['pass' => $pass, 'part' => 'salida', 'type' => 'signature']);
-            if (!$signatureInspection) {
-                $signatureInspection = new Inspection();
-                $signatureInspection->setPass($pass);
-                $signatureInspection->setType('signature');
-                $signatureInspection->setPart('salida');
-                $signatureInspection->setStatus('1');
-                $em->persist($signatureInspection);
-                $em->flush(); // Flush to get ID
-            }
-
-            if (!empty($data['signature_conductor'])) {
-                $path = $signatureDir . 'conductor_salida_' . $signatureInspection->getId() . '.png';
-                $this->saveBase64Image($data['signature_conductor'], $path);
-                $signatureInspection->setSignatureConductor('/uploads/signatures/' . basename($path));
-            }
-
-            if (!empty($data['signature_approver'])) {
-                $path = $signatureDir . 'approver_salida_' . $signatureInspection->getId() . '.png';
-                $this->saveBase64Image($data['signature_approver'], $path);
-                $signatureInspection->setSignatureApprover('/uploads/signatures/' . basename($path));
-            }
-            $em->persist($signatureInspection);
-        }
-
-        $em->flush();
-
-        return new JsonResponse(['success' => true, 'message' => 'Salida registrada/actualizada correctamente', 'pass_id' => $pass->getId()]);
+        return new JsonResponse(['success' => true, 'message' => 'Salida registrada correctamente', 'departure_pass_id' => $departurePass->getId()]);
     }
 
     #[Route('/api/pass/entrada', name: 'api_pass_entrada', methods: ['POST'])]
     public function entrada(Request $request, EntityManagerInterface $em): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-        $pass = $em->getRepository(Pass::class)->find($data['pass_id'] ?? 0);
+        $data = $request->request->all();
+        $departurePassId = $data['departure_pass_id'] ?? null;
 
-        if (!$pass) {
-            return new JsonResponse(['success' => false, 'message' => 'Pase no encontrado'], 404);
+        if (!$departurePassId) {
+            return new JsonResponse(['success' => false, 'message' => 'Se requiere "departure_pass_id".'], 400);
         }
 
-        $pass->setEndDate(isset($data['end_date']) ? new \DateTime($data['end_date']) : new \DateTime());
-        $pass->setArrivalMileage($data['mileage'] ?? $pass->getArrivalMileage());
-        $pass->setFuel($data['fuel'] ?? $pass->getFuel());
-        $pass->setArrivalComment($data['arrival_comment'] ?? null);
-        $pass->setUpdatedAt(new \DateTimeImmutable());
-        $em->persist($pass);
-
-        $uploadDir = $this->getParameter('kernel.project_dir') . '/public/uploads/';
-        $signatureDir = $uploadDir . 'signatures/';
-        $photoDir = $uploadDir . 'photos/';
-
-        if (!is_dir($signatureDir)) mkdir($signatureDir, 0777, true);
-        if (!is_dir($photoDir)) mkdir($photoDir, 0777, true);
-
-        if (isset($data['inspections']) && is_array($data['inspections'])) {
-            foreach ($data['inspections'] as $inspectionData) {
-                if (isset($inspectionData['photo']) && !empty($inspectionData['photo'])) {
-                    $inspection = new Inspection();
-                    $inspection->setPass($pass);
-                    $inspection->setType($inspectionData['type'] ?? 'photo');
-                    $inspection->setPart($inspectionData['part'] ?? 'vehicle_entry');
-                    $inspection->setComment($inspectionData['comment'] ?? null);
-                    $inspection->setStatus('1');
-                    $em->persist($inspection);
-                    $em->flush();
-
-                    $photoPath = $photoDir . $inspection->getId() . '_' . $inspectionData['part'] . '.png';
-                    $this->saveBase64Image($inspectionData['photo'], $photoPath);
-                    $inspection->setPhotoUrl('/uploads/photos/' . basename($photoPath));
-                    $em->persist($inspection);
-                }
-            }
+        $departurePass = $em->getRepository(DeparturePass::class)->find($departurePassId);
+        if (!$departurePass) {
+            return new JsonResponse(['success' => false, 'message' => 'Pase de salida no encontrado'], 404);
         }
 
-        if (!empty($data['signature_conductor']) || !empty($data['signature_approver'])) {
-            $inspection = $em->getRepository(Inspection::class)->findOneBy(['pass' => $pass, 'part' => 'entrada', 'type' => 'signature']);
-            if (!$inspection) {
-                $inspection = new Inspection();
-                $inspection->setPass($pass);
-                $inspection->setType('signature');
-                $inspection->setPart('entrada');
-                $inspection->setStatus('1');
-                $em->persist($inspection);
-                $em->flush();
-            }
+        $arrivalPass = new ArrivalPass();
+        $arrivalPass->setDeparturePass($departurePass);
+        $arrivalPass->setEndDate(new \DateTime());
+        $arrivalPass->setArrivalMileage($data['mileage'] ?? 0);
+        $arrivalPass->setArrivalFuel($data['fuel'] ?? '8');
+        $arrivalPass->setArrivalComment($data['arrival_comment'] ?? null);
 
-            if (!empty($data['signature_conductor'])) {
-                $path = $signatureDir . 'conductor_entrada_' . $inspection->getId() . '.png';
-                $this->saveBase64Image($data['signature_conductor'], $path);
-                $inspection->setSignatureConductor('/uploads/signatures/' . basename($path));
-            }
+        $this->handleInspections($request, $departurePass, 'arrival');
 
-            if (!empty($data['signature_approver'])) {
-                $path = $signatureDir . 'approver_entrada_' . $inspection->getId() . '.png';
-                $this->saveBase64Image($data['signature_approver'], $path);
-                $inspection->setSignatureApprover('/uploads/signatures/' . basename($path));
-            }
-            $em->persist($inspection);
-        }
-
+        $em->persist($arrivalPass);
         $em->flush();
 
-        return new JsonResponse(['success' => true, 'message' => 'Entrada registrada correctamente', 'pass_id' => $pass->getId()]);
+        return new JsonResponse(['success' => true, 'message' => 'Entrada registrada correctamente', 'arrival_pass_id' => $arrivalPass->getId()]);
     }
 
-    private function saveBase64Image(string $base64Data, string $outputPath): void
+    private function handleInspections(Request $request, DeparturePass $departurePass, string $moment): void
     {
-        $base64Data = preg_replace('#^data:image/\w+;base64,#i', '', $base64Data);
-        $imageData = base64_decode($base64Data);
+        $inspectionsMeta = json_decode($request->request->get('inspections_meta', '[]'), true);
+        $files = $request->files->get('files', []);
 
-        $dir = dirname($outputPath);
-        if (!is_dir($dir)) {
-            mkdir($dir, 0777, true);
+        $uploadedFilesMap = [];
+        foreach ($files as $file) {
+            if ($file instanceof UploadedFile) {
+                $partName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+                $uploadedFilesMap[$partName] = $file;
+            }
         }
 
-        file_put_contents($outputPath, $imageData);
+        if (empty($inspectionsMeta)) {
+            return;
+        }
+
+        foreach ($inspectionsMeta as $inspectionData) {
+            $part = $inspectionData['part'];
+            if (isset($uploadedFilesMap[$part])) {
+                $file = $uploadedFilesMap[$part];
+                $fileType = $inspectionData['type'] ?? 'photo';
+
+                $fileName = $this->fileUploader->upload($file, $fileType);
+
+                $inspection = new Inspection();
+                $inspection->setDeparturePass($departurePass);
+                $inspection->setType($fileType);
+                $inspection->setPart($part);
+                $inspection->setMoment($moment);
+                $inspection->setPhotoUrl($fileName);
+
+                $departurePass->addInspection($inspection);
+            }
+        }
     }
 }

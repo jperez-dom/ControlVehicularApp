@@ -1,12 +1,6 @@
-#monolog:
-#    channels:
-#        - deprecation
-#
-#    handlers:
-#        database:
-#            type: service
-#            id: App\Monolog\DatabaseHandler
-#            level: info
+monolog:
+    channels:
+        - deprecation
 
 # -------------------- ENTORNO DEV --------------------
 when@dev:
@@ -21,6 +15,10 @@ when@dev:
                 type: console
                 process_psr_3_messages: false
                 channels: ["!event", "!doctrine", "!console"]
+            deprecation:
+                type: stream
+                path: "%kernel.logs_dir%/%kernel.environment%.deprecations.log"
+                channels: [deprecation]
 
 # -------------------- ENTORNO TEST --------------------
 when@test:
@@ -58,6 +56,5 @@ when@prod:
                 channels: ["!event", "!doctrine"]
             deprecation:
                 type: stream
-                channels: [deprecation]
-                path: php://stderr
-                formatter: monolog.formatter.json
+                path: "%kernel.logs_dir%/%kernel.environment%.deprecations.log"
+                channels: ["deprecation"]

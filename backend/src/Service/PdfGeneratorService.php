@@ -10,6 +10,7 @@ class PdfGeneratorService
     public function __construct(
         private Twig $twig,
         private string $projectDir, // %kernel.project_dir%
+        private string $reportsDirectory
     ) {}
 
     /**
@@ -22,7 +23,6 @@ class PdfGeneratorService
         $options = new Options();
         $options->set('isHtml5ParserEnabled', true);
         $options->set('isRemoteEnabled', true);
-        // ¡ESTA ES LA LÍNEA CLAVE! Habilita el acceso al directorio público.
         $options->set('chroot', $this->projectDir . '/public');
 
         $dompdf = new Dompdf($options);
@@ -35,13 +35,28 @@ class PdfGeneratorService
         return $dompdf->output();
     }
 
+    /**
+     * Renderiza el Twig a PDF, lo guarda en el servidor y devuelve la ruta del archivo.
+     */
+    public function renderAndSavePdf(string $filename, array $data, string $template = 'pdf/comission_report.html.twig'): string
+    {
+        $pdfBinary = $this->renderToPdf($data, $template);
+        $filePath = $this->reportsDirectory . '/' . $filename;
+
+        if (!is_dir($this->reportsDirectory)) {
+            mkdir($this->reportsDirectory, 0777, true);
+        }
+
+        file_put_contents($filePath, $pdfBinary);
+
+        return $filePath;
+    }
+
     /** Convierte una URL pública (/uploads/...) a ruta absoluta en disco para Dompdf */
     public function publicUrlToPath(?string $url): ?string
     {
         if (!$url) return null;
-        // Si viene como http://host/uploads/... limpieza del host:
         $clean = preg_replace('#^https?://[^/]+#', '', $url);
-        // Asegurar que empieza con '/'
         if ($clean && $clean[0] !== '/') $clean = '/'.$clean;
         return $this->projectDir . '/public' . $clean;
     }

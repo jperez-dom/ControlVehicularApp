@@ -109,53 +109,6 @@ class InspectionController extends AbstractController
         return new JsonResponse(['success' => true, 'message' => 'Inspección eliminada correctamente']);
     }
 
-    #[Route('/api/pass/{id}', name: 'api_pass_details', methods: ['GET'])]
-    public function getDetails(int $id, EntityManagerInterface $em): JsonResponse
-    {
-        $pass = $em->getRepository(Pass::class)->find($id);
-
-        if (!$pass) {
-            return new JsonResponse([
-                'success' => false,
-                'message' => 'Pase no encontrado'
-            ], 404);
-        }
-
-        // Recuperar todas las inspecciones relacionadas con este Pase
-        $inspections = $em->getRepository(Inspection::class)->findBy(['pass' => $pass]);
-
-        $inspectionsData = [];
-        foreach ($inspections as $inspection) {
-            $inspectionsData[] = [
-                'id' => $inspection->getId(),
-                'type' => $inspection->getType(),         // 'photo', 'signature', 'text'
-                'part' => $inspection->getPart(),         // 'front', 'salida', 'general_comment_salida'
-                'comment' => $inspection->getComment(),   // Comentario de la inspección o el comentario general
-                'photo_url' => $inspection->getPhotoUrl(), // Ruta de la foto
-                'signature_conductor_url' => $inspection->getSignatureConductor(), // Ruta de la firma del conductor
-                'signature_approver_url' => $inspection->getSignatureApprover(), // Ruta de la firma del aprobador
-            ];
-        }
-
-        // Crear la respuesta final
-        return new JsonResponse([
-            'success' => true,
-            'pass' => [
-                'id' => $pass->getId(),
-                'departureMileage' => $pass->getDepartureMileage(),
-                'arrivalMileage' => $pass->getArrivalMileage(),
-                'fuel' => $pass->getFuel(),
-                'startDate' => $pass->getStartDate() ? $pass->getStartDate()->format('Y-m-d H:i:s') : null,
-                'endDate' => $pass->getEndDate() ? $pass->getEndDate()->format('Y-m-d H:i:s') : null,
-                'status' => $pass->getStatus(),
-                'comission_folio' => $pass->getComission() ? $pass->getComission()->getFolio() : null,
-                'inspections' => $inspectionsData
-            ]
-        ]);
-    }
-
-
-
     private function saveBase64Image(string $base64Data, string $outputPath): void
     {
         $base64Data = preg_replace('#^data:image/\w+;base64,#i', '', $base64Data);

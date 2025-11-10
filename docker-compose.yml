@@ -39,7 +39,6 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./backend:/var/www/html
-      - /var/www/html/vendor
     environment:
       APP_ENV: dev
       APP_DEBUG: 1
@@ -64,8 +63,6 @@ services:
     volumes:
       - ./frontend:/usr/src/app
       - /usr/src/app/node_modules
-    environment:
-      VITE_API_URL: "http://localhost:8001"
     ports:
       - "3000:3000"
     depends_on:

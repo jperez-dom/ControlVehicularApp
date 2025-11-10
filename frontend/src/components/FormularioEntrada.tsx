@@ -18,14 +18,12 @@ interface InspectionData {
     part: string;
     comment: string | null;
     photo_url: string | null;
-    signature_conductor_url?: string | null;
-    signature_approver_url?: string | null;
 }
 
 interface PassDetails {
     id: number;
     arrivalMileage: number | null;
-    fuel: string;
+    arrivalFuel: string; // Cambiado de fuel
     comment_entrada: string | null;
     endDate: string | null;
     inspections: InspectionData[];
@@ -51,26 +49,27 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
     const [existingPhotos, setExistingPhotos] = useState<InspectionData[]>([]);
     const [newPhotos, setNewPhotos] = useState<{[key: string]: string}>({});
     const [photoCaptureModal, setPhotoCaptureModal] = useState({ open: false, photoKey: '', photoLabel: '' });
+    const [originalSignatures, setOriginalSignatures] = useState<InspectionData[]>([]);
 
     const isEditing = !!(ficha.passDetails?.endDate && new Date(ficha.passDetails.endDate).getFullYear() > 1970);
 
     useEffect(() => {
         if (isEditing && ficha.passDetails) {
-            const { arrivalMileage, fuel, comment_entrada, inspections } = ficha.passDetails;
+            const { arrivalMileage, arrivalFuel, comment_entrada, inspections } = ficha.passDetails;
             setKmEntrada(arrivalMileage?.toString() || '');
-            setCombustible(parseInt(fuel, 10) || 8);
+            setCombustible(parseInt(arrivalFuel, 10) || 8); // Cambiado de fuel
             setArrivalComment(comment_entrada || '');
 
-            // Separate photos and signatures for entry
             const photos = inspections.filter(i => i.type === 'photo' && i.part.includes('_entry'));
-            const signatures = inspections.find(i => i.type === 'signature' && i.part.includes('_entry'));
-
             setExistingPhotos(photos);
 
-            if (signatures) {
-                if (signatures.signature_conductor_url) setFirmaConductor(signatures.signature_conductor_url);
-                if (signatures.signature_approver_url) setFirmaAprobador(signatures.signature_approver_url);
-            }
+            const signatures = inspections.filter(i => i.type === 'signature' && i.part.includes('_entry'));
+            setOriginalSignatures(signatures);
+
+            const conductorSignature = signatures.find(s => s.part.startsWith('conductor_'));
+            setFirmaConductor(conductorSignature?.photo_url || null);
+            const approverSignature = signatures.find(s => s.part.startsWith('approver_'));
+            setFirmaAprobador(approverSignature?.photo_url || null);
         }
     }, [ficha, isEditing]);
 
@@ -79,7 +78,10 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
     };
 
     const handlePhotoConfirm = (photoData: string) => {
-        setNewPhotos(prev => ({ ...prev, [photoCaptureModal.photoKey]: photoData }));
+        const { photoKey } = photoCaptureModal;
+        if (!photoKey) return;
+
+        setNewPhotos(prev => ({ ...prev, [photoKey]: photoData }));
         setPhotoCaptureModal({ open: false, photoKey: '', photoLabel: '' });
     };
 
@@ -104,13 +106,32 @@ export function FormularioEntrada({ ficha, onBack, onComplete }: FormularioEntra
     };
 
     const handleSubmit = () => {
+        const firmasNuevas: { [key: string]: string } = {};
+        const firmasParaBorrar: number[] = [];
+
+        const originalConductorSig = originalSignatures.find(s => s.part.startsWith('conductor_') && s.part.includes('_entry'));
+        if (firmaConductor && firmaConductor.startsWith('data:image')) {
+            firmasNuevas['conductor_entrada'] = firmaConductor;
+        }
+        if (originalConductorSig && firmaConductor !== originalConductorSig.photo_url) {
+            firmasParaBorrar.push(originalConductorSig.id);
+        }
+
+        const originalApproverSig = originalSignatures.find(s => s.part.startsWith('approver_') && s.part.includes('_entry'));
+        if (firmaAprobador && firmaAprobador.startsWith('data:image')) {
+            firmasNuevas['approver_entrada'] = firmaAprobador;
+        }
+        if (originalApproverSig && firmaAprobador !== originalApproverSig.photo_url) {
+            firmasParaBorrar.push(originalApproverSig.id);
+        }
+
         onComplete({
             kmEntrada,
             combustible,
             arrival_comment,
-            firmaConductor,
-            firmaAprobador,
             fotos: newPhotos,
+            firmas: firmasNuevas,
+            firmasParaBorrar: firmasParaBorrar,
         });
     };
 

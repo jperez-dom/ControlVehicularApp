@@ -2,138 +2,98 @@
 
 namespace App\EventListener;
 
-use App\Entity\Comission;
-use App\Entity\Driver;
-use App\Entity\Inspection;
 use App\Entity\LogAction;
-use App\Entity\Pass;
-use App\Entity\Place;
 use App\Entity\Users;
-use App\Entity\Vehicle;
+use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
+use Doctrine\ORM\Event\PostPersistEventArgs;
+use Doctrine\ORM\Event\PostUpdateEventArgs;
+use Doctrine\ORM\Event\PostRemoveEventArgs;
+use Doctrine\ORM\Events;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\Persistence\Event\LifecycleEventArgs;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
-class DoctrineAuditSubscriber
+/**
+ * Este listener audita automáticamente las acciones de Crear, Actualizar y Borrar (CRUD)
+ * en la base de datos y las guarda en la tabla 'log_action'.
+ *
+ * Utiliza atributos de PHP 8 para registrarse, lo que simplifica el archivo services.yaml.
+ */
+#[AsDoctrineListener(event: Events::postPersist, priority: 500, connection: 'default')]
+#[AsDoctrineListener(event: Events::postUpdate, priority: 500, connection: 'default')]
+#[AsDoctrineListener(event: Events::postRemove, priority: 500, connection: 'default')]
+final class DoctrineAuditSubscriber
 {
-    private EntityManagerInterface $entityManager;
-    private RequestStack $requestStack;
-    private TokenStorageInterface $tokenStorage;
-
-    public function __construct(EntityManagerInterface $entityManager, RequestStack $requestStack, TokenStorageInterface $tokenStorage)
-    {
-        $this->entityManager = $entityManager;
-        $this->requestStack = $requestStack;
-        $this->tokenStorage = $tokenStorage;
+    public function __construct(
+        private readonly EntityManagerInterface $em,
+        private readonly RequestStack $requestStack,
+        private readonly TokenStorageInterface $tokenStorage
+    ) {
     }
 
-    public function postPersist(LifecycleEventArgs $args): void
+    public function postPersist(PostPersistEventArgs $args): void
     {
-        $this->logChange('INSERT', $args);
+        $this->logActivity('INSERT', $args->getObject());
     }
 
-    public function postUpdate(LifecycleEventArgs $args): void
+    public function postUpdate(PostUpdateEventArgs $args): void
     {
-        $this->logChange('UPDATE', $args);
+        $this->logActivity('UPDATE', $args->getObject());
     }
 
-    public function postRemove(LifecycleEventArgs $args): void
+    public function postRemove(PostRemoveEventArgs $args): void
     {
-        $this->logChange('DELETE', $args);
+        $this->logActivity('DELETE', $args->getObject());
     }
 
-    private function logChange(string $action, LifecycleEventArgs $args): void
+    private function logActivity(string $action, object $entity): void
     {
-        $entity = $args->getObject();
-
-        if ($entity instanceof LogAction || $entity instanceof Users) {
+        // 1. Ignorar la propia entidad de log para evitar bucles infinitos.
+        if ($entity instanceof LogAction) {
             return;
         }
 
-        $user = null;
-        $userName = 'Sistema'; // Default a "Sistema" si no se encuentra un usuario
-
+        // 2. Obtener el usuario de forma segura.
         $token = $this->tokenStorage->getToken();
-        if ($token && $token->getUser() instanceof Users) {
-            $user = $token->getUser();
-            $userName = $user->getUser();
-        } else {
-            $request = $this->requestStack->getCurrentRequest();
-            if ($request) {
-                $headerUserId = $request->headers->get('X-USER-ID');
-                if ($headerUserId) {
-                    $user = $this->entityManager->getRepository(Users::class)->find($headerUserId);
-                    if ($user) {
-                        $userName = $user->getUser();
-                    }
-                }
-            }
-        }
-
-        if (!$user) {
-            // Si no se puede determinar el usuario, no se registra el log.
-            // Opcional: podrías decidir registrarlo como una acción del sistema.
+        if (null === $token) {
             return;
         }
 
-        $description = $this->generateDescription($action, $entity, $userName);
-
-        $logAction = new LogAction();
-        $logAction->setAction($action);
-        $logAction->setTableName($this->entityManager->getClassMetadata(get_class($entity))->getTableName());
-        $logAction->setDescription($description);
-        $logAction->setUser($user);
-
-        $this->entityManager->persist($logAction);
-        $this->entityManager->flush();
-    }
-
-    private function generateDescription(string $action, object $entity, string $userName): string
-    {
-        $entityClass = get_class($entity);
-        $entityName = basename(str_replace('\\', '/', $entityClass));
-        $entityId = method_exists($entity, 'getId') ? $entity->getId() : 'N/A';
-
-        $verb = match ($action) {
-            'INSERT' => 'creó',
-            'UPDATE' => 'actualizó',
-            'DELETE' => 'eliminó',
-            default => 'realizó una acción en',
-        };
-
-        $details = 'un registro';
-
-        switch ($entityClass) {
-            case Comission::class:
-                /** @var Comission $entity */
-                $details = sprintf("la comisión con folio %s", $entity->getFolio());
-                break;
-            case Driver::class:
-                /** @var Driver $entity */
-                $details = sprintf("al conductor '%s'", $entity->getName());
-                break;
-            case Vehicle::class:
-                /** @var Vehicle $entity */
-                $details = sprintf("el vehículo %s %s", $entity->getBrand(), $entity->getModel());
-                break;
-            case Pass::class:
-                /** @var Pass $entity */
-                $details = sprintf("el pase de salida/entrada para la comisión %s", $entity->getComission()?->getFolio() ?? 'N/A');
-                break;
-            case Inspection::class:
-                /** @var Inspection $entity */
-                $details = sprintf("una inspección de tipo '%s' para el pase de la comisión %s", $entity->getType(), $entity->getPass()?->getComission()?->getFolio() ?? 'N/A');
-                break;
-            case Place::class:
-                /** @var Place $entity */
-                $details = sprintf("el destino '%s, %s' para la comisión %s", $entity->getCity(), $entity->getState(), $entity->getComission()?->getFolio() ?? 'N/A');
-                break;
-            default:
-                $details = sprintf("un registro de tipo %s (ID: %s)", $entityName, $entityId);
-                break;
+        $user = $token->getUser();
+        if (!$user instanceof Users) {
+            return;
         }
 
-        return sprintf("El usuario '%s' %s %s.", $userName, $verb, $details);
+        // 3. Construir la descripción del log.
+        $tableName = $this->em->getClassMetadata(get_class($entity))->getTableName();
+        $description = "El usuario '{$user->getUser()}' realizó una acción de '{$action}' en la tabla '{$tableName}'.";
+        if (method_exists($entity, 'getId')) {
+            $description .= " (ID: {$entity->getId()})";
+        }
+
+        // 4. Crear y persistir la entidad de log.
+        try {
+            $log = new LogAction();
+            $log->setUser($user);
+            $log->setUserName($user->getUser()); // Asumiendo que tienes un método getUser() o getName()
+            $log->setAction($action);
+            $log->setTableName($tableName);
+            $log->setDescription($description);
+            $log->setCreatedAt(new \DateTimeImmutable());
+
+            // Usamos un nuevo EntityManager para esta operación para evitar interferencias
+            // con la transacción principal, lo que previene errores de "nested flush".
+            $newEm = $this->em->create(
+                $this->em->getConnection(),
+                $this->em->getConfiguration()
+            );
+
+            $newEm->persist($log);
+            $newEm->flush();
+
+        } catch (\Exception $e) {
+            // Si la auditoría falla, no debe detener la aplicación principal.
+            // Aquí podrías registrar el error de auditoría en un archivo de log si lo necesitas.
+        }
     }
 }

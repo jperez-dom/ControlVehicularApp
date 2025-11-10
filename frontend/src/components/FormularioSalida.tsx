@@ -18,14 +18,12 @@ interface InspectionData {
     part: string;
     comment: string | null;
     photo_url: string | null;
-    signature_conductor_url?: string | null; // Make optional for type consistency
-    signature_approver_url?: string | null;
 }
 
 interface PassDetails {
     id: number;
     departureMileage: number | null;
-    fuel: string;
+    departureFuel: string; // Cambiado de fuel
     comment_salida: string | null;
     inspections: InspectionData[];
 }
@@ -50,26 +48,28 @@ export function FormularioSalida({ ficha, onBack, onComplete }: FormularioSalida
     const [existingPhotos, setExistingPhotos] = useState<InspectionData[]>([]);
     const [newPhotos, setNewPhotos] = useState<{[key: string]: string}>({});
     const [photoCaptureModal, setPhotoCaptureModal] = useState({ open: false, photoKey: '', photoLabel: '' });
+    const [originalSignatures, setOriginalSignatures] = useState<InspectionData[]>([]);
 
     const isEditing = !!ficha.passDetails;
 
     useEffect(() => {
         if (isEditing && ficha.passDetails) {
-            const { departureMileage, fuel, comment_salida, inspections } = ficha.passDetails;
+            const { departureMileage, departureFuel, comment_salida, inspections } = ficha.passDetails;
             setKmSalida(departureMileage?.toString() || '');
-            setCombustible(parseInt(fuel, 10) || 8);
+            setCombustible(parseInt(departureFuel, 10) || 8); // Cambiado de fuel
             setDepartureComment(comment_salida || '');
 
-            // Separate photos and signatures
             const photos = inspections.filter(i => i.type === 'photo' && !i.part.includes('_entry'));
-            const signatures = inspections.find(i => i.type === 'signature' && !i.part.includes('_entry'));
-
             setExistingPhotos(photos);
 
-            if (signatures) {
-                if (signatures.signature_conductor_url) setFirmaConductor(signatures.signature_conductor_url);
-                if (signatures.signature_approver_url) setFirmaAprobador(signatures.signature_approver_url);
-            }
+            const signatures = inspections.filter(i => i.type === 'signature' && !i.part.includes('_entry'));
+            setOriginalSignatures(signatures);
+
+            const conductorSignature = signatures.find(s => s.part.startsWith('conductor_'));
+            setFirmaConductor(conductorSignature?.photo_url || null);
+
+            const approverSignature = signatures.find(s => s.part.startsWith('approver_'));
+            setFirmaAprobador(approverSignature?.photo_url || null);
         }
     }, [ficha, isEditing]);
 
@@ -78,8 +78,11 @@ export function FormularioSalida({ ficha, onBack, onComplete }: FormularioSalida
     };
 
     const handlePhotoConfirm = (photoData: string) => {
-        setNewPhotos(prev => ({ ...prev, [photoCaptureModal.photoKey]: photoData }));
-        setPhotoCaptureModal({ open: false, photoKey: '', photoLabel: '' }); // <-- AHORA EL FORMULARIO CIERRA EL MODAL
+        const { photoKey } = photoCaptureModal;
+        if (!photoKey) return;
+
+        setNewPhotos(prev => ({ ...prev, [photoKey]: photoData }));
+        setPhotoCaptureModal({ open: false, photoKey: '', photoLabel: '' });
     };
 
     const handleDeleteExistingPhoto = async (e: React.MouseEvent, photoId: number) => {
@@ -103,13 +106,32 @@ export function FormularioSalida({ ficha, onBack, onComplete }: FormularioSalida
     };
 
     const handleSubmit = () => {
+        const firmasNuevas: { [key: string]: string } = {};
+        const firmasParaBorrar: number[] = [];
+
+        const originalConductorSig = originalSignatures.find(s => s.part.startsWith('conductor_'));
+        if (firmaConductor && firmaConductor.startsWith('data:image')) {
+            firmasNuevas['conductor_salida'] = firmaConductor;
+        }
+        if (originalConductorSig && firmaConductor !== originalConductorSig.photo_url) {
+            firmasParaBorrar.push(originalConductorSig.id);
+        }
+
+        const originalApproverSig = originalSignatures.find(s => s.part.startsWith('approver_'));
+        if (firmaAprobador && firmaAprobador.startsWith('data:image')) {
+            firmasNuevas['approver_salida'] = firmaAprobador;
+        }
+        if (originalApproverSig && firmaAprobador !== originalApproverSig.photo_url) {
+            firmasParaBorrar.push(originalApproverSig.id);
+        }
+
         onComplete({
             kmSalida,
             combustible,
             departure_comment,
-            firmaConductor,
-            firmaAprobador,
             fotos: newPhotos,
+            firmas: firmasNuevas,
+            firmasParaBorrar: firmasParaBorrar,
         });
     };
 

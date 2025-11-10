@@ -18,8 +18,8 @@ class Comission
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(type: Types::INTEGER)]
-    private ?int $folio = null;
+    #[ORM\Column(type: Types::STRING, length: 255, unique: true)]
+    private ?string $folio = null;
 
     #[ORM\Column(length: 50)]
     private ?string $city = null;
@@ -54,15 +54,15 @@ class Comission
     #[ORM\JoinColumn(nullable: false)]
     private ?Users $user = null;
 
-    #[ORM\OneToMany(mappedBy: "comission", targetEntity: Pass::class)]
-    private Collection $passes;
+    #[ORM\OneToMany(mappedBy: "comission", targetEntity: DeparturePass::class)]
+    private Collection $departurePasses;
 
     #[ORM\OneToMany(mappedBy: "comission", targetEntity: Place::class)]
     private Collection $places;
 
     public function __construct()
     {
-        $this->passes = new ArrayCollection();
+        $this->departurePasses = new ArrayCollection();
         $this->places = new ArrayCollection();
         $this->status = '1';
         $this->created_at = new \DateTimeImmutable();
@@ -85,8 +85,8 @@ class Comission
     }
 
     public function getId(): ?int { return $this->id; }
-    public function getFolio(): ?int { return $this->folio; }
-    public function setFolio(int $folio): static { $this->folio = $folio; return $this; }
+    public function getFolio(): ?string { return $this->folio; }
+    public function setFolio(string $folio): static { $this->folio = $folio; return $this; }
     public function getCity(): ?string { return $this->city; }
     public function setCity(string $city): static { $this->city = $city; return $this; }
     public function getState(): ?string { return $this->state; }
@@ -107,22 +107,35 @@ class Comission
     public function setDriver(?Driver $driver): static { $this->driver = $driver; return $this; }
     public function getUser(): ?Users { return $this->user; }
     public function setUser(?Users $user): static { $this->user = $user; return $this; }
-    public function getPasses(): Collection { return $this->passes; }
-    public function addPass(Pass $pass): static
+
+    /**
+     * @return Collection<int, DeparturePass>
+     */
+    public function getDeparturePasses(): Collection
     {
-        if (!$this->passes->contains($pass)) {
-            $this->passes->add($pass);
-            $pass->setComission($this);
+        return $this->departurePasses;
+    }
+
+    public function addDeparturePass(DeparturePass $departurePass): static
+    {
+        if (!$this->departurePasses->contains($departurePass)) {
+            $this->departurePasses->add($departurePass);
+            $departurePass->setComission($this);
         }
         return $this;
     }
-    public function removePass(Pass $pass): static
+
+    public function removeDeparturePass(DeparturePass $departurePass): static
     {
-        if ($this->passes->removeElement($pass) && $pass->getComission() === $this) {
-            $pass->setComission(null);
+        if ($this->departurePasses->removeElement($departurePass)) {
+            // set the owning side to null (unless already changed)
+            if ($departurePass->getComission() === $this) {
+                $departurePass->setComission(null);
+            }
         }
         return $this;
     }
+
     public function getPlaces(): Collection { return $this->places; }
     public function addPlace(Place $place): static
     {

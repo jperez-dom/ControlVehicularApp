@@ -7,8 +7,6 @@ import type {
     Comission,
     ComissionCreateRequest,
     ComissionCreateResponse,
-    PassSalidaRequest,
-    PassEntradaRequest,
     PassResponse,
     PlaceCreateRequest,
     PlaceCreateResponse,
@@ -16,7 +14,7 @@ import type {
 } from "./types/api";
 
 const api = axios.create({
-    baseURL: "/api", // <-- Correcto para usar el proxy de Vite
+    baseURL: `${import.meta.env.VITE_API_URL}/api`,
     headers: {
         "Content-Type": "application/json",
     },
@@ -72,9 +70,17 @@ export const comissionsAPI = {
 
 // -------- PASSES ----------
 export const passAPI = {
-    salida: (data: PassSalidaRequest) => api.post<PassResponse>("/pass/salida", data),
-    entrada: (data: PassEntradaRequest) => api.post<PassResponse>("/pass/entrada", data),
-    getDetails: (passId: number) => api.get<PassDetailsResponse>(`/pass/${passId}`),
+    salida: (data: FormData) => api.post<PassResponse>("/pass/salida", data, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
+    }),
+    entrada: (data: FormData) => api.post<PassResponse>("/pass/entrada", data, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
+    }),
+    getDetails: (passId: number) => api.get<PassDetailsResponse>(`/pass/details/${passId}`),
 };
 
 // -------- INSPECTIONS ----------

@@ -6,11 +6,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { DetalleFicha } from './components/DetalleFicha';
 import { FormularioEntrada } from './components/FormularioEntrada';
 import { FormularioSalida } from './components/FormularioSalida';
-import { toast } from "sonner";
+import { toast } from 'sonner';
 import { Plus, Eye, Trash2, ArrowLeft } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import grupoOptimoLogo from 'figma:asset/220b05f22fbef50eaf6e2085eb40125dfd99d55b.png';
-import { driversAPI, vehiclesAPI, comissionsAPI, placesAPI, passAPI } from './api';
+import { driversAPI, vehiclesAPI, comissionsAPI, placesAPI, passAPI, inspectionsAPI } from './api';
 import { Login } from "./components/Login";
 import { AddDriverModal } from "./components/AddDriverModal";
 import { AddVehicleModal } from "./components/AddVehicleModal";
@@ -28,20 +28,29 @@ interface Destino {
     comentario: string;
 }
 
-interface PassDetails {
+interface InspectionData {
     id: number;
+    type: 'photo' | 'signature';
+    part: string;
+    moment: string; // 'departure' or 'arrival'
+    photo_url: string | null;
+}
+
+interface PassDetails {
+    id: number; // Corresponds to DeparturePass ID
     departureMileage: number | null;
     arrivalMileage: number | null;
-    fuel: string;
+    departureFuel: string;
+    arrivalFuel: string;
     comment_salida: string | null;
     comment_entrada: string | null;
     startDate: string | null;
     endDate: string | null;
-    status: string;
-    comission_folio: string | null;
+    inspections?: InspectionData[]; // Now part of PassDetails
 }
 
 interface FichaGuardada {
+    id: number;
     folio: string;
     conductorNombre: string;
     conductorCargo: string;
@@ -143,17 +152,29 @@ export default function App() {
     const refreshFichas = useCallback(async () => {
         try {
             const fichasResponse = await comissionsAPI.list();
-            const freshFichas = Array.isArray(fichasResponse.data) ? fichasResponse.data as FichaGuardada[] : [];
-            setFichasGuardadas(freshFichas);
+            const freshFichas = Array.isArray(fichasResponse.data) ? fichasResponse.data.map((ficha: any) => ({
+                id: ficha.id,
+                folio: ficha.folio,
+                conductorNombre: ficha.conductorNombre,
+                conductorCargo: ficha.conductorCargo,
+                vehiculo: ficha.vehiculo,
+                destinos: ficha.destinos || [],
+                fechaCreacion: ficha.fechaCreacion,
+                estado: ficha.estado, // Estado ahora viene directamente en la ficha
+                passDetails: ficha.passDetails, // passDetails ahora es un objeto con la nueva estructura
+            })) as FichaGuardada[] : [];
+             setFichasGuardadas(freshFichas);
 
             if (selectedFicha) {
                 const updatedSelected = freshFichas.find(f => f.folio === selectedFicha.folio);
                 setSelectedFicha(updatedSelected || null);
             }
-            toast.success('Datos actualizados');
+            // No mostramos toast aquí para evitar duplicados en el flujo de creación
+            return freshFichas; // Devolvemos la lista actualizada
         } catch (error) {
             console.error('❌ Error al recargar las fichas:', error);
             toast.error('No se pudieron actualizar los datos');
+            return []; // Devolvemos un array vacío en caso de error
         }
     }, [selectedFicha]);
 
@@ -175,7 +196,18 @@ export default function App() {
                 } else { setVehicles([]); }
 
                 if (Array.isArray(fichasResponse.data)) {
-                    setFichasGuardadas(fichasResponse.data as FichaGuardada[]);
+                    const initialFichas = fichasResponse.data.map((ficha: any) => ({
+                        id: ficha.id,
+                        folio: ficha.folio,
+                        conductorNombre: ficha.conductorNombre,
+                        conductorCargo: ficha.conductorCargo,
+                        vehiculo: ficha.vehiculo,
+                        destinos: ficha.destinos || [],
+                        fechaCreacion: ficha.fechaCreacion,
+                        estado: ficha.estado,
+                        passDetails: ficha.passDetails,
+                    })) as FichaGuardada[];
+                    setFichasGuardadas(initialFichas);
                 }
 
                 toast.success('Datos cargados desde la base de datos');
@@ -246,23 +278,72 @@ export default function App() {
 
     const handleGoToSalida = () => setCurrentScreen('formulario-salida');
     const handleGoToEntrada = () => setCurrentScreen('formulario-entrada');
-    const handleEditSalida = () => setCurrentScreen('formulario-salida');
-    const handleEditEntrada = () => setCurrentScreen('formulario-entrada');
+    const handleEditSalida = () => {
+        console.log("✏️ Editando Salida. Datos de la ficha seleccionada:", selectedFicha);
+        setCurrentScreen('formulario-salida');
+    };
+    const handleEditEntrada = () => {
+        console.log("✏️ Editando Entrada. Datos de la ficha seleccionada:", selectedFicha);
+        setCurrentScreen('formulario-entrada');
+    };
 
     const handleSalidaComplete = async (salidaData: any) => {
         if (!selectedFicha) return toast.error("No hay una ficha seleccionada.");
         try {
-            const isEditing = !!selectedFicha.passDetails?.id;
-            const payload = {
-                pass_id: isEditing ? selectedFicha.passDetails!.id : undefined,
-                comission_id: selectedFicha.folio,
-                mileage: parseInt(salidaData.kmSalida?.replace(/,/g, '') || '0'),
-                fuel: salidaData.combustible?.toString() || '8',
-                departure_comment: salidaData.departure_comment || '',
-                start_date: new Date().toISOString(),
-            };
-            await passAPI.salida(payload);
-            toast.success(`Salida ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
+            // No hay isEditing para salida, siempre se crea un nuevo DeparturePass
+            // 1. Delete signatures marked for deletion (if any, though not typical for first salida)
+            if (salidaData.firmasParaBorrar && salidaData.firmasParaBorrar.length > 0) {
+                for (const id of salidaData.firmasParaBorrar) {
+                    await inspectionsAPI.delete(id);
+                }
+            }
+
+            // 2. Build the final payload as FormData
+            const formData = new FormData();
+            formData.append('comission_id', selectedFicha.id.toString()); // Siempre se envía el comission_id
+            formData.append('mileage', parseInt(salidaData.kmSalida?.replace(/,/g, "") || "0", 10).toString());
+            formData.append('fuel', salidaData.combustible?.toString() || "8");
+            formData.append('departure_comment', salidaData.departure_comment || "");
+
+            const inspections = [
+                ...Object.entries(salidaData.fotos || {}).map(([part, photo]) => (photo ? { type: 'photo', part, photo } : null)),
+                ...Object.entries(salidaData.firmas || {}).map(([part, photo]) => (photo ? { type: 'signature', part, photo } : null))
+            ].filter(Boolean);
+
+            // Solución robusta: Enviar archivos y metadatos por separado.
+            const newInspectionsMeta = [];
+            for (const inspection of inspections) {
+                if (inspection && inspection.photo && inspection.photo.startsWith('data:image')) {
+                    // 1. Añadir metadatos (sin la imagen) al array de metadatos.
+                    newInspectionsMeta.push({ type: inspection.type, part: inspection.part });
+
+                    // 2. Convertir base64 a Blob y añadirlo al FormData.
+                    try {
+                    const byteString = atob(inspection.photo.split(',')[1]);
+                    const mimeString = inspection.photo.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) { ia[i] = byteString.charCodeAt(i); }
+                    const blob = new Blob([ab], { type: mimeString });
+                    
+                    // Usamos 'files[]' para que el backend reciba un array de archivos.
+                    formData.append('files[]', blob, `${inspection.part}.jpg`);
+                    } catch (e) {
+                        console.error(`Error al procesar la imagen para la parte: ${inspection.part}`, e);
+                    }
+                }
+            }
+
+            // 3. Añadir el array de metadatos como una única cadena JSON.
+            if (newInspectionsMeta.length > 0) {
+                formData.append('inspections_meta', JSON.stringify(newInspectionsMeta));
+            }
+
+            console.log("Enviando payload a /pass/salida vía POST (FormData)");
+            const response = await passAPI.salida(formData);
+            console.log("Respuesta del servidor:", response.data);
+
+            toast.success(`Salida registrada correctamente`);
             await refreshFichas();
             setCurrentScreen('detalle-ficha');
         } catch (error) {
@@ -272,19 +353,42 @@ export default function App() {
     };
 
     const handleEntradaComplete = async (entradaData: any) => {
-        const passId = selectedFicha?.passDetails?.id;
-        if (!passId) return toast.error("Falta el ID del Pase para registrar la entrada.");
+        const departurePassId = selectedFicha?.passDetails?.id; // El ID de passDetails ahora es el ID del DeparturePass
+        if (!departurePassId) return toast.error("No se encontró el ID del Pase de Salida para registrar la entrada.");
         try {
-            const isEditing = !!selectedFicha.passDetails?.endDate && new Date(selectedFicha.passDetails.endDate).getFullYear() > 1970;
-            const payload = {
-                pass_id: passId,
-                end_date: new Date().toISOString(),
-                mileage: parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0'),
-                fuel: entradaData.combustible?.toString() || '8',
-                arrival_comment: entradaData.arrival_comment || '',
-            };
-            await passAPI.entrada(payload);
-            toast.success(`Entrada ${isEditing ? 'actualizada' : 'registrada'} correctamente`);
+            // No hay isEditing para entrada, siempre se crea un nuevo ArrivalPass
+            const formData = new FormData();
+            formData.append('departure_pass_id', departurePassId.toString()); // Enviar el ID del DeparturePass
+            formData.append('mileage', parseInt(entradaData.kmEntrada?.replace(/,/g, '') || '0').toString());
+            formData.append('fuel', entradaData.combustible?.toString() || '8');
+            formData.append('arrival_comment', entradaData.arrival_comment || '');
+
+            const inspections = [
+                ...Object.entries(entradaData.fotos || {}).map(([part, photo]) => (photo ? { type: 'photo', part: `${part}_entry`, photo } : null)),
+                ...Object.entries(entradaData.firmas || {}).map(([part, photo]) => (photo ? { type: 'signature', part: `${part}_entry`, photo } : null))
+            ].filter(Boolean);
+
+            const newInspectionsMetaEntrada = [];
+            for (const inspection of inspections) {
+                if (inspection && inspection.photo && inspection.photo.startsWith('data:image')) {
+                    newInspectionsMetaEntrada.push({ type: inspection.type, part: inspection.part });
+                    const byteString = atob(inspection.photo.split(',')[1]);
+                    const mimeString = inspection.photo.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) { ia[i] = byteString.charCodeAt(i); }
+                    const blob = new Blob([ab], { type: mimeString });
+                    formData.append('files[]', blob, `${inspection.part}.jpg`);
+                }
+            }
+
+            if (newInspectionsMetaEntrada.length > 0) {
+                formData.append('inspections_meta', JSON.stringify(newInspectionsMetaEntrada));
+            }
+
+            console.log("Enviando payload a /pass/entrada vía POST (FormData)");
+            await passAPI.entrada(formData);
+            toast.success(`Entrada registrada correctamente`);
             await refreshFichas();
             setCurrentScreen('detalle-ficha');
         } catch (error) {
@@ -365,17 +469,17 @@ export default function App() {
                     });
                 }
 
-                const nuevaFicha: FichaGuardada = {
-                    ...fichaData,
-                    folio: comissionResponse.data.comission.folio.toString(),
-                    fechaCreacion: comissionResponse.data.comission.created_at,
-                    estado: 'creada',
-                    passDetails: null
-                };
-
-                setFichasGuardadas(prev => [...prev, nuevaFicha]);
-                setSelectedFicha(nuevaFicha);
                 toast.success('Ficha guardada en la base de datos');
+                
+                // Forzar la recarga de todas las fichas para asegurar la consistencia de los datos
+                const updatedFichas = await refreshFichas();
+
+                // Encontrar la ficha recién creada en la lista actualizada y seleccionarla
+                const newFolio = comissionResponse.data.comission.folio.toString();
+                const fichaRecienCreada = updatedFichas.find(f => f.folio === newFolio);
+                if (fichaRecienCreada) setSelectedFicha(fichaRecienCreada);
+
+                toast.success('Datos actualizados');
                 setCurrentScreen('detalle-ficha');
             }
         } catch (error) {
@@ -880,32 +984,30 @@ export default function App() {
                                             </div>
 
                                             <div className="mt-4 pt-4 border-t border-gray-200">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`h-2 w-2 rounded-full ${
-                                                            ficha.estado === 'creada' ? 'bg-blue-500' :
-                                                                ficha.estado === 'con-salida' ? 'bg-orange-500' :
-                                                                    'bg-green-500'
-                                                        }`}></div>
-                                                        <p className="text-sm text-gray-600">
-                                                            {ficha.estado === 'creada' ? 'Ficha creada' :
-                                                                ficha.estado === 'con-salida' ? 'Con salida' :
-                                                                    'Completada'}
-                                                        </p>
-                                                    </div>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 bg-[rgba(225,225,225,1)]"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleSelectFicha(ficha);
-                                                        }}
-                                                    >
-                                                        <Eye className="h-3 w-3 mr-1" />
-                                                        Ver ficha
-                                                    </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`h-2 w-2 rounded-full ${
+                                                        ficha.estado === 'creada' ? 'bg-blue-500' :
+                                                            ficha.estado === 'con-salida' ? 'bg-orange-500' :
+                                                                'bg-green-500'
+                                                    }`}></div>
+                                                    <p className="text-sm text-gray-600">
+                                                        {ficha.estado === 'creada' ? 'Ficha creada' :
+                                                            ficha.estado === 'con-salida' ? 'Con salida' :
+                                                                'Completada'}
+                                                    </p>
                                                 </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 bg-[rgba(225,225,225,1)]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSelectFicha(ficha);
+                                                    }}
+                                                >
+                                                    <Eye className="h-3 w-3 mr-1" />
+                                                    Ver ficha
+                                                </Button>
                                             </div>
                                         </div>
                                     ))

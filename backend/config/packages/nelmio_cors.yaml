@@ -1,6 +1,6 @@
 nelmio_cors:
     defaults:
-        allow_origin: ['http://localhost:3000', 'https://*.ngrok-free.dev']
+        allow_origin: ['http://localhost:3000', 'https://*.ngrok-free.dev', 'http://cv.grupooptimo.mx', 'https://cv.grupooptimo.mx']
         allow_methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
         allow_headers: ['Content-Type', 'Authorization', 'X-USER-ID']
         expose_headers: ['Link']
@@ -8,7 +8,7 @@ nelmio_cors:
         allow_credentials: true
     paths:
         '^/api/':
-            allow_origin: ['http://localhost:3000', 'https://*.ngrok-free.dev']
+            allow_origin: ['http://localhost:3000', 'https://*.ngrok-free.dev', 'http://cv.grupooptimo.mx', 'https://cv.grupooptimo.mx']
             allow_headers: ['Content-Type', 'Authorization', 'X-USER-ID']
             allow_methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
             max_age: 3600
